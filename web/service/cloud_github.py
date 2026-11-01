@@ -145,13 +145,21 @@ class Catalog:
         if self.github.repo("GET", "/git/ref/heads/" + self.branch, allow_missing=True):
             return
         head = self.github.repo("GET", "/git/ref/heads/main")
-        try:
-            self.github.repo(
-                "POST", "/git/refs", {"ref": "refs/heads/" + self.branch, "sha": head["object"]["sha"]}
-            )
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code != 422:
-                raise
+        body = {"ref": "refs/heads/" + self.branch, "sha": head["object"]["sha"]}
+        # Parallel Actions publishers can briefly receive a 403 while GitHub
+        # serializes ref creation. Retry that transient race, but preserve a
+        # real permission failure after a bounded number of attempts.
+        for attempt in range(4):
+            try:
+                self.github.repo("POST", "/git/refs", body)
+                return
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 422:
+                    return  # another publisher created the branch first
+                if exc.response.status_code != 403 or attempt == 3:
+                    raise
+                delay = rate_limit_delay(exc.response, attempt)
+                time.sleep(delay if delay is not None else min(60 * 2**attempt, 300))
 
     def get(self, key: str):
         response = self.github.repo(
