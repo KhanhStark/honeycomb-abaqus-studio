@@ -7,9 +7,9 @@ from .actions_log import get_actions_log, runs_markdown
 
 
 def execution_deadline(workflow_started_epoch, *, wall_time=None, monotonic_time=None):
-    """Reserve 45 minutes for archival within the entire 330-minute job."""
+    """Reserve 15 minutes for archival within the entire 330-minute job."""
     elapsed = max(0, (time.time() if wall_time is None else wall_time) - float(workflow_started_epoch))
-    remaining = 285 * 60 - elapsed
+    remaining = 315 * 60 - elapsed
     if remaining <= 0:
         raise RuntimeError("timed_out: environment preparation consumed the execution budget")
     return (time.monotonic() if monotonic_time is None else monotonic_time) + remaining
