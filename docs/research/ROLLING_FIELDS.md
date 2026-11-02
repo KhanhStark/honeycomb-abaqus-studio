@@ -46,7 +46,7 @@ used six existing Parquet blocks from the Windows Abaqus 2017 hexagonal 7 J
 circular-clamp ODB export: 85,394 rows sampled from first/last U, S and PEEQ frames.
 It wrote five bounded volumes, verified upload before eviction, published the
 complete **sample** archive, restored all original bytes and rechecked the source
-row count without double counting. [Receipt](evidence/rolling-native-fields-20261026.json).
+row count without double counting. [Receipt](../evidence/rolling-native-fields-20261026.json).
 
 No new solver ran. This is storage acceptance with native numeric data, not an
 end-to-end Linux Full simulation or a complete field dataset. Software tests also

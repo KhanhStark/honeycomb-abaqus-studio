@@ -56,7 +56,7 @@ Pareto chia theo điều kiện tải, đồng thời giảm khối lượng/l�
 
 Thay thư mục/lệnh Abaqus được lưu cho lần khởi động engine tiếp theo. Đường dẫn kỹ thuật nên dùng ASCII để tương thích Abaqus 2017. Không chạy nhiều engine thủ công trên cùng dữ liệu.
 
-Google Drive cần OAuth client Desktop. Khi kết nối thành công có thể backup job và tiếp tục upload bị gián đoạn. Khôi phục luôn tạo job mới và kiểm tra file; không ghi đè job gốc. Xem [hướng dẫn Drive](DRIVE_BACKUP.md).
+Google Drive cần OAuth client Desktop. Khi kết nối thành công có thể backup job và tiếp tục upload bị gián đoạn. Khôi phục luôn tạo job mới và kiểm tra file; không ghi đè job gốc. Xem [hướng dẫn Drive](../cloud/DRIVE_BACKUP.md).
 
 **Backup Drive** tự lưu ZIP mô phỏng cùng thư mục PDF/DOCX và dữ liệu huấn luyện riêng để mở trực tiếp trên Drive. **Backup PDF/ML riêng** bổ sung thư mục này cho ZIP cũ. **Bản giữ lại** mở `<data-root>-retained` ở máy, nằm ngoài thư viện mô phỏng; giữ thư mục này khi xóa dữ liệu nặng. Chỉ dọn sau khi ZIP và các tệp riêng của đúng bản backup đều được xác minh. Ứng dụng không tự xóa dữ liệu.
 

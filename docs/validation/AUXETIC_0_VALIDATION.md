@@ -37,6 +37,6 @@ Bản đóng gói `artifacts/HoneycombStudio-auxetic-0-win-x64/` đã được m
 
 Kiểm thử mã nguồn: 69 bài pytest đạt, 9 bài C# đạt; Ruff và kiểm tra kiểu đạt, WinUI build/publish không có lỗi hay cảnh báo biên dịch.
 
-![Lõi auxetic 0° trong Studio](C:/UET/DO_AN/honeycomb-abaqus-studio/output/reentrant-0-integration-20261025/studio-auxetic-0.jpg)
+![Lõi auxetic 0° trong Studio](../evidence/auxetic-0-studio-20261025.jpg)
 
 Shortcut Desktop dùng `scripts/start-independent.ps1`; launcher và hai tác vụ mở thủ công của Studio đã trỏ sang gói mới. Dữ liệu hai job cũ, 14 lượt hoàn tất được giữ nguyên.
