@@ -118,6 +118,13 @@ def main():
             if args.segment == 3:
                 raise RuntimeError('Four segment budget exhausted; retained checkpoint requires investigation')
             outcome = 'checkpoint'
+        try:
+            github.repo('PATCH', f'/check-runs/{progress.check}', {
+                'status': 'completed', 'conclusion': 'neutral' if outcome == 'checkpoint' else 'success',
+                'output': {'title': outcome, 'summary': 'Verified state retained for next segment' if outcome == 'checkpoint' else 'Solver and archive completed'},
+            })
+        except Exception:
+            pass  # A convenience check update cannot invalidate verified data.
         with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
             out.write('outcome=' + outcome + '\n')
         print(json.dumps({'outcome': outcome, 'run_id': run['id'], 'segment': args.segment}), flush=True)
