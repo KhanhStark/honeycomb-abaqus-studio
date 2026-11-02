@@ -95,7 +95,7 @@ def main():
                 progress.thread.join(timeout=70)
         run = store.get('runs', run['id'])
         if run['status'] in ('completed', 'review'):
-            publisher = ReleaseArchive(github, job['reserved_release_id'])
+            publisher = ReleaseArchive(github, job['reserved_release_id'], tag='simulation-' + args.job_id)
             publisher.publish(root, attempt=f'workflow-{workflow}', complete=True)
             release = github.repo('PATCH', f'/releases/{job["reserved_release_id"]}', {'draft': False})
             catalog.update(key, lambda old: {**old, 'status': run['status'], 'archive_verified': True,
