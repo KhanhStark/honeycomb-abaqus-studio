@@ -12,7 +12,8 @@ from honeycomb_studio.store import write_json
 ROOT = Path('/tmp/honeycomb-recover-probe')
 BUILD = '''from abaqus import *
 from abaqusConstants import *
-import mesh,os
+import part, material, section, assembly, step, interaction, load, mesh, job
+import regionToolset, visualization, os
 Mdb()
 m=mdb.models['Model-1']
 s=m.ConstrainedSketch(name='box',sheetSize=10.)
@@ -26,7 +27,7 @@ mat.Density(table=((2.7e-9,),))
 mat.Elastic(table=((70000.,.33),))
 m.HomogeneousSolidSection(name='S',material='Elastic')
 p.SectionAssignment(region=p.Set(name='ALL',cells=p.cells),sectionName='S')
-p.seedPart(size=1.)
+p.seedPart(size=.5)
 p.setMeshControls(regions=p.cells,technique=STRUCTURED)
 p.setElementType(regions=(p.cells,),elemTypes=(mesh.ElemType(elemCode=C3D8R,elemLibrary=EXPLICIT),))
 p.generateMesh()
