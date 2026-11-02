@@ -1,0 +1,121 @@
+name: Long Explicit research with verified continuation
+run-name: Explicit continuation · ${{ inputs.job_name || inputs.job_id }}
+on:
+  workflow_dispatch:
+    inputs:
+      job_id:
+        required: true
+        type: string
+      job_name:
+        required: false
+        type: string
+permissions:
+  contents: write
+  checks: write
+  id-token: write
+concurrency:
+  group: honeycomb-batch-${{ inputs.job_id }}
+  cancel-in-progress: false
+jobs:
+  prepare:
+    name: Chuẩn bị · ${{ inputs.job_name || inputs.job_id }}
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      max_parallel: ${{ steps.matrix.outputs.max_parallel }}
+      parameter_title: ${{ steps.matrix.outputs.parameter_title }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+      - run: uv sync --locked --extra cloud
+      - name: Kiểm tra đăng nhập Drive và bộ cài trước khi khởi động các runner
+        env:
+          ABAQUS_MEDIA_DRIVE_FILE_ID: ${{ vars.ABAQUS_MEDIA_DRIVE_FILE_ID }}
+          HONEYCOMB_DRIVE_CREDENTIALS_JSON: ${{ secrets.HONEYCOMB_DRIVE_CREDENTIALS_JSON }}
+        run: uv run --locked --extra cloud python scripts/prepare_linux_media.py --preflight
+      - name: Kiểm tra môi trường dùng chung với lượt thử Linux
+        env:
+          MEDIA_ID: ${{ vars.ABAQUS_MEDIA_DRIVE_FILE_ID }}
+          DRIVE: ${{ secrets.HONEYCOMB_DRIVE_CREDENTIALS_JSON }}
+          LICENSE: ${{ secrets.ABAQUS_LICENSE_ENDPOINT }}
+          VENDOR: ${{ secrets.ABAQUS_VENDOR_PORT }}
+          TAILSCALE_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TAILSCALE_AUDIENCE: ${{ secrets.TS_AUDIENCE }}
+        run: |
+          uv run --locked --extra cloud python -c 'import os; missing=[k for k in ("MEDIA_ID", "DRIVE", "LICENSE", "VENDOR", "TAILSCALE_ID", "TAILSCALE_AUDIENCE") if not os.getenv(k)]; assert not missing, "Thiếu cấu hình: " + ", ".join(missing)'
+          uv run --locked --extra cloud python -c 'from pathlib import Path; from scripts.cloud_worker import require_qualification; require_qualification(Path.cwd())'
+      - name: Nhận bài và bố trí một mô hình cho mỗi máy chạy
+        id: matrix
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CLOUD_JOB_ID: ${{ inputs.job_id }}
+        run: |
+          uv run --locked --extra cloud python scripts/cloud_matrix.py prepare --job-id "$CLOUD_JOB_ID"
+  segment0:
+    needs: [prepare]
+    uses: ./.github/workflows/explicit-stage.yml
+    secrets: inherit
+    with:
+      job_id: ${{ inputs.job_id }}
+      matrix: ${{ needs.prepare.outputs.matrix }}
+      segment: 0
+      previous: -1
+  segment1:
+    needs: [prepare, segment0]
+    uses: ./.github/workflows/explicit-stage.yml
+    secrets: inherit
+    with:
+      job_id: ${{ inputs.job_id }}
+      matrix: ${{ needs.prepare.outputs.matrix }}
+      segment: 1
+      previous: 0
+  segment2:
+    needs: [prepare, segment1]
+    uses: ./.github/workflows/explicit-stage.yml
+    secrets: inherit
+    with:
+      job_id: ${{ inputs.job_id }}
+      matrix: ${{ needs.prepare.outputs.matrix }}
+      segment: 2
+      previous: 1
+  segment3:
+    needs: [prepare, segment2]
+    uses: ./.github/workflows/explicit-stage.yml
+    secrets: inherit
+    with:
+      job_id: ${{ inputs.job_id }}
+      matrix: ${{ needs.prepare.outputs.matrix }}
+      segment: 3
+      previous: 2
+  finalize:
+    name: Tổng hợp dữ liệu · ${{ needs.prepare.outputs.parameter_title || inputs.job_name || inputs.job_id }}
+    needs: [prepare, segment0, segment1, segment2, segment3]
+    if: always() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    # Only publishers serialize. Solver jobs from other batches keep running.
+    concurrency:
+      group: honeycomb-training-collection
+      cancel-in-progress: false
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+      - run: uv sync --locked --extra cloud
+      - name: Tổng hợp các lượt hoàn tất và các lượt bị gián đoạn
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CLOUD_JOB_ID: ${{ inputs.job_id }}
+        run: uv run --locked --extra cloud python scripts/cloud_matrix.py finalize --job-id "$CLOUD_JOB_ID"
+      - name: Gộp dữ liệu tất cả job · đầu vào, đầu ra và bảng huấn luyện chung
+        if: needs.prepare.result == 'success'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CLOUD_JOB_ID: ${{ inputs.job_id }}
+        run: uv run --locked --extra cloud python scripts/collect_cloud_training.py --full-job-id "$CLOUD_JOB_ID" --require-training-job "$CLOUD_JOB_ID"
+

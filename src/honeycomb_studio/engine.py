@@ -379,6 +379,24 @@ class Engine:
                 ).get("solver_success", False)
             if r.pop("force_new_solver", False):
                 solved = False
+            if r.pop("explicit_recover", False):
+                # Only the continuation worker sets this after verifying the
+                # complete checkpoint inventory, runtime and scientific input.
+                if not previous or solved or recovering:
+                    raise ValueError("Invalid Explicit continuation state")
+                self._phase(r, "solving")
+                self._monitor(r, previous, "solving", [
+                    "job=" + previous["job_name"], "recover",
+                    "cpus=" + str(r["resolved"]["cpus"]), "double=both", "interactive",
+                ])
+                sta = solver.sta_progress(
+                    Path(previous["path"]) / "raw" / (previous["job_name"] + ".sta"),
+                    r["resolved"]["duration"],
+                )
+                if not sta.get("solver_success"):
+                    raise RuntimeError("Recovered solver did not finish; inspect .sta/.log")
+                write_json(Path(previous["path"]) / "solver-complete.json", {"completed_at": now(), "sta": sta})
+                solved = True
             if recovering and not solved:
                 raise Interrupted(
                     "Tiến trình trước đã kết thúc nhưng solver chưa hoàn tất; chọn tiếp tục để chạy lại"
@@ -438,6 +456,7 @@ class Engine:
                 r["test_only"] = self.fake
                 cfg = {
                     **r["resolved"],
+                    "explicit_continuation": getattr(self, "explicit_continuation", False),
                     "adapter_directory": str(ADAPTERS),
                     "output_directory": str(attempt / "raw"),
                     "job_name": a["job_name"],
@@ -451,6 +470,7 @@ class Engine:
                 cache_key = digest(
                     {
                         "input": cache_spec,
+                        "explicit_continuation": getattr(self, "explicit_continuation", False),
                         "runtime": self.runtime_fingerprint,
                         "builder": checksum(ADAPTERS / "build.py"),
                         "reentrant_geometry": checksum(ADAPTERS / "reentrant.py"),

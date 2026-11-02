@@ -1,0 +1,48 @@
+name: Licensed Explicit recovery acceptance
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  probe:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    env:
+      ABAQUS_MEDIA_DRIVE_FILE_ID: ${{ vars.ABAQUS_MEDIA_DRIVE_FILE_ID }}
+      ABAQUS_LICENSE_ENDPOINT: ${{ secrets.ABAQUS_LICENSE_ENDPOINT }}
+      ABAQUS_VENDOR_PORT: ${{ secrets.ABAQUS_VENDOR_PORT }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+      - run: uv sync --locked --extra cloud
+      - name: Kết nối riêng tới máy chủ cấp phép Abaqus
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          tags: tag:honeycomb-runner
+      - name: Kiểm tra kết nối máy chủ cấp phép trước khi cài đặt
+        run: uv run --locked --extra cloud python scripts/check_license_network.py
+      - name: Cài công cụ và dựng môi trường tương thích Abaqus
+        run: |
+          python3 scripts/actions_step.py --title "Cài công cụ giải nén" --details output/actions-logs/packages.log -- bash -c 'sudo apt-get update -qq && sudo apt-get install -y unrar p7zip-full'
+          python3 scripts/actions_step.py --title "Dựng môi trường Linux" --details output/actions-logs/image.log -- docker build --build-arg MODEL_UID=$(id -u) -t honeycomb-install-probe scripts/linux_media
+      - name: Tải bộ cài từ Drive riêng · dung lượng, tốc độ, tiến độ
+        env:
+          HONEYCOMB_DRIVE_CREDENTIALS_JSON: ${{ secrets.HONEYCOMB_DRIVE_CREDENTIALS_JSON }}
+        run: uv run --locked python scripts/actions_step.py --title "Tải ISO từ kho Drive" --details output/actions-logs/download.log -- uv run --locked python scripts/prepare_linux_media.py
+      - name: Kiểm tra SHA-256 và cài Abaqus trong môi trường cách ly
+        run: python3 scripts/actions_step.py --title "Kiểm tra và cài Abaqus" --details output/actions-logs/install.log -- bash scripts/linux_media/install_runtime.sh
+      - name: Prove checkpoint integrity and native recover before research retry
+        run: uv run --locked --extra cloud python scripts/verify_explicit_recover.py
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: explicit-recover-verification
+          path: |
+            output/explicit-recover-verification.json
+            /tmp/honeycomb-recover-probe/*.log
+            /tmp/honeycomb-recover-probe/*.sta

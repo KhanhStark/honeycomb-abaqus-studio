@@ -1,0 +1,106 @@
+name: Bounded Explicit continuation stage
+on:
+  workflow_call:
+    inputs:
+      job_id:
+        required: true
+        type: string
+      matrix:
+        required: true
+        type: string
+      segment:
+        required: true
+        type: number
+      previous:
+        required: true
+        type: number
+permissions:
+  contents: write
+  checks: write
+  id-token: write
+jobs:
+  segment:
+    name: Segment ${{ inputs.segment }} · ${{ matrix.display_name }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix: ${{ fromJSON(inputs.matrix) }}
+    env:
+      HONEYCOMB_ACTIONS_LOG: '1'
+      ABAQUS_MEDIA_DRIVE_FILE_ID: ${{ vars.ABAQUS_MEDIA_DRIVE_FILE_ID }}
+      ABAQUS_LICENSE_ENDPOINT: ${{ secrets.ABAQUS_LICENSE_ENDPOINT }}
+      ABAQUS_VENDOR_PORT: ${{ secrets.ABAQUS_VENDOR_PORT }}
+    steps:
+      - run: echo "HONEYCOMB_WORKFLOW_STARTED_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+      - run: uv sync --locked --extra cloud
+      - uses: actions/download-artifact@v5
+        if: inputs.segment > 0
+        with:
+          name: explicit-state-${{ inputs.previous }}-${{ matrix.index }}
+          path: ${{ runner.temp }}/continuation
+      - id: prior
+        env:
+          SEGMENT: ${{ inputs.segment }}
+        run: |
+          uv run --locked --extra cloud python scripts/continuation_bundle.py restore --folder "$RUNNER_TEMP/continuation" --segment "$SEGMENT"
+      - name: Kết nối riêng tới máy chủ cấp phép Abaqus
+        if: steps.prior.outputs.done != 'true'
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          tags: tag:honeycomb-runner
+      - name: Kiểm tra kết nối máy chủ cấp phép trước khi cài đặt
+        if: steps.prior.outputs.done != 'true'
+        run: uv run --locked --extra cloud python scripts/check_license_network.py
+      - name: Cài công cụ và dựng môi trường tương thích Abaqus
+        if: steps.prior.outputs.done != 'true'
+        run: |
+          python3 scripts/actions_step.py --title "Cài công cụ giải nén" --details output/actions-logs/packages.log -- bash -c 'sudo apt-get update -qq && sudo apt-get install -y unrar p7zip-full'
+          python3 scripts/actions_step.py --title "Dựng môi trường Linux" --details output/actions-logs/image.log -- docker build --build-arg MODEL_UID=$(id -u) -t honeycomb-install-probe scripts/linux_media
+      - name: Tải bộ cài từ Drive riêng · dung lượng, tốc độ, tiến độ
+        env:
+          HONEYCOMB_DRIVE_CREDENTIALS_JSON: ${{ secrets.HONEYCOMB_DRIVE_CREDENTIALS_JSON }}
+        if: steps.prior.outputs.done != 'true'
+        run: uv run --locked python scripts/actions_step.py --title "Tải ISO từ kho Drive" --details output/actions-logs/download.log -- uv run --locked python scripts/prepare_linux_media.py
+      - name: Kiểm tra SHA-256 và cài Abaqus trong môi trường cách ly
+        if: steps.prior.outputs.done != 'true'
+        run: python3 scripts/actions_step.py --title "Kiểm tra và cài Abaqus" --details output/actions-logs/install.log -- bash scripts/linux_media/install_runtime.sh
+      - name: Solve or recover the same 12 ms model
+        if: steps.prior.outputs.done != 'true'
+        id: solve
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PARENT_ID: ${{ inputs.job_id }}
+          CHILD_ID: ${{ matrix.child_id }}
+          SEGMENT: ${{ inputs.segment }}
+        run: uv run --locked --extra cloud python scripts/cloud_segment.py --parent-id "$PARENT_ID" --job-id "$CHILD_ID" --segment "$SEGMENT"
+      - name: Seal checkpoint after the solver has closed all files
+        env:
+          OUTCOME: ${{ steps.solve.outputs.outcome || 'completed' }}
+        run: uv run --locked --extra cloud python scripts/continuation_bundle.py pack --folder "$RUNNER_TEMP/next" --outcome "$OUTCOME"
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: explicit-state-${{ inputs.segment }}-${{ matrix.index }}
+          path: ${{ runner.temp }}/next/**
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+      - name: Preserve complete files if a continuation gate fails
+        if: failure()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: explicit-failure-${{ inputs.segment }}-${{ matrix.index }}
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            /tmp/honeycomb-results/**
+            output/actions-logs/**
+            output/install-probe/*.log

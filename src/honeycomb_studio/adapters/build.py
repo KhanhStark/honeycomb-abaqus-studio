@@ -281,6 +281,15 @@ mdb.Job(name=JOB,model=MODEL,type=ANALYSIS,numCpus=P['cpus'],numDomains=P['cpus'
 # self-contact is unnecessary for this low-energy intact-face impact. Core
 # self-contact remains active. Abaqus 2017 exposes this option via keyword editor.
 m.keywordBlock.synchVersions(storeNodesAndElements=False)
+if P.get('explicit_continuation',False):
+    # Output control only: never force smaller increments at checkpoint times.
+    for i,block in enumerate(m.keywordBlock.sieBlocks):
+        if block.lower().startswith('*restart'):
+            m.keywordBlock.replace(i,'*Restart, write, number interval=48, time marks=NO, overlay')
+            break
+    else:
+        raise RuntimeError('Continuation requires an Explicit restart output request')
+    P['continuation_restart_intervals']=48
 for i,block in enumerate(m.keywordBlock.sieBlocks):
     if block.lower().startswith('*contact property assignment'):
         m.keywordBlock.insert(i,'*Contact Controls Assignment, CONTACT THICKNESS REDUCTION=NOPERIMSELF')
