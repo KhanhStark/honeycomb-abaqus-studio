@@ -236,6 +236,9 @@ class Engine:
         record = a.get("process") if args is None else None
         process = None
         if args is not None:
+            if phase == "solving":
+                initial = solver.sta_progress(raw / (a["job_name"] + ".sta"), r["resolved"]["duration"]) if "recover" in args else {}
+                a.setdefault("phase_simulation_start_s", {})[phase] = initial.get("simulation_time_s", 0.0)
             a.setdefault("phase_started_at", {})[phase] = time.time()
             process = solver.launch(self.abaqus, args, raw, logs / (phase + ".log"))
             record = solver.owner(process)
@@ -243,7 +246,7 @@ class Engine:
             a["process_phase"] = phase
             self.store.save("runs", r)
         started = time.monotonic()
-        sim0 = 0.0
+        sim0 = a.get("phase_simulation_start_s", {}).get(phase, 0.0)
         previous_cpu = None
         stopped_at = None
         while solver.owned_tree_alive(record):
@@ -291,9 +294,15 @@ class Engine:
             elapsed = time.time() - a.get("phase_started_at", {}).get(
                 phase, time.time() - (time.monotonic() - started)
             )
-            if progress.get("simulation_time_s", 0) > sim0:
+            if "simulation_time_s" in progress:
                 t = progress["simulation_time_s"]
-                progress["eta_solver_seconds"] = max(0.0, elapsed * (r["resolved"]["duration"] - t) / t)
+                # Recover can roll back to the last saved interval. Estimate
+                # throughput only from work done during this solver launch.
+                if t < sim0:
+                    sim0 = t
+                    a.setdefault("phase_simulation_start_s", {})[phase] = sim0
+                if t > sim0:
+                    progress["eta_solver_seconds"] = max(0.0, elapsed * (r["resolved"]["duration"] - t) / (t - sim0))
             progress["phase_elapsed_seconds"] = elapsed
             if record:
                 try:
