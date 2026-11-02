@@ -60,6 +60,7 @@ def parallel_smoke_input(requested):
 
 def main(parallel_smoke=False):
     root = Path.cwd()
+    guard_minutes = 30 if parallel_smoke else 285
     output = Path(os.environ["RUNNER_TEMP"]) / "honeycomb-impact"
     output.mkdir()
     endpoint = os.environ["ABAQUS_LICENSE_ENDPOINT"]
@@ -118,7 +119,7 @@ def main(parallel_smoke=False):
             "physics_changed": parallel_smoke,
             "profile": "parallel_smoke_not_research" if parallel_smoke else "research",
             "smoke_overrides": effective if parallel_smoke else None,
-            "solver_budget_minutes": 285,
+            "solver_budget_minutes": guard_minutes,
         },
     )
     network = "honeycomb-impact"
@@ -199,7 +200,7 @@ def main(parallel_smoke=False):
                     intervals = list(engine.command_intervals.values())
                     overlap = min(i["end"] for i in intervals) - max(i["start"] for i in intervals) if len(intervals) == 2 else 0
                     success = len(all_runs) == 2 and overlap > 0 and all(
-                        (Path(r["attempts"][-1]["path"]) / "solver-complete.json").exists()
+                        r["attempts"] and (Path(r["attempts"][-1]["path"]) / "solver-complete.json").exists()
                         and r["status"] == "review" for r in all_runs)
                     receipt.update(status="review" if success else "failed", solver_success=success,
                                    profile="parallel_smoke_not_research", ml_eligible=False,
@@ -211,7 +212,7 @@ def main(parallel_smoke=False):
             b = store.get("batches", batch["id"])
             if b["status"] == "paused":
                 raise RuntimeError(b.get("resource_error", "Batch paused"))
-            if time.monotonic() - started > 285 * 60:
+            if time.monotonic() - started > guard_minutes * 60:
                 engine.control(batch["id"], "stop")
                 raise RuntimeError("Acceptance budget exceeded; full physics duration was not shortened")
             time.sleep(10 if parallel_smoke else 45)
