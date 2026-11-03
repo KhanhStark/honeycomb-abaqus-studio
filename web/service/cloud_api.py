@@ -19,6 +19,13 @@ from .cloud_github import JOB_ID, REPOSITORY, Catalog, Github
 from .cloud_matrix import TERMINAL, matrix_entries, matrix_plan, recover, workflow_title
 from .cloud_quality import longer_research_spec
 from .cloud_runtime import execution_runtime, qualification, technical_evidence
+from .cloud_solver_download import (
+    download_package,
+    download_script,
+    fetch_manifest,
+    selected_files,
+    solver_choices,
+)
 from .models import BatchSpec, ModelSpec, catalogue, digest, expand
 
 OWNER_ID = 273490538
@@ -183,8 +190,27 @@ def create_app(github: Github | None = None) -> FastAPI:
             raise HTTPException(404, "Không tìm thấy job.")
         data, _ = catalog.get("training/jobs/" + identity)
         return {"job_id": identity, "name": value["name"], "status": value["status"], "collection": data,
+                "solver_runs": solver_choices(data, value) if data else [],
                 "workflow_url": f"https://github.com/{REPOSITORY}/actions/runs/{value['workflow_run_id']}"
                 if value.get("workflow_run_id") else None}
+
+    @app.get("/api/jobs/{identity}/data/solver-download")
+    def solver_download(identity: str, selection: str, types: str = "cae,odb,inp", format: str = "script"):
+        if not JOB_ID.fullmatch(identity):
+            raise HTTPException(404)
+        value, _ = catalog.get("jobs/" + identity)
+        data, _ = catalog.get("training/jobs/" + identity)
+        if value is None or data is None:
+            raise HTTPException(404, "Job chưa có bản lưu để tải.")
+        if format not in ("script", "manifest"):
+            raise HTTPException(422, "Định dạng tải không hợp lệ.")
+        choice, files = selected_files(data, value, selection, types)
+        package = download_package(fetch_manifest(github, data), choice, files)
+        name = "download_run_" + str(choice["index"]).zfill(4)
+        content = download_script(package) if format == "script" else json.dumps(package, indent=2)
+        return Response(content, media_type="text/x-python" if format == "script" else "application/json",
+                        headers={"Content-Disposition": f'attachment; filename="{name}.{"py" if format == "script" else "json"}"',
+                                 "Cache-Control": "no-store"})
 
     @app.post("/api/jobs/{identity}/data/collect")
     def collect_job_data(identity: str, request: Request):

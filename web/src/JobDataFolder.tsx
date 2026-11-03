@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ExternalLink, FolderOpen, FileText, Download, RefreshCw } from "lucide-react";
+import SolverDownload from "./SolverDownload";
 
 type Doc = Record<string, any>;
 type File = { path: string; bytes: number; sha256: string; kind: string };
@@ -66,6 +67,7 @@ export default function JobDataFolder({ identity, session, close }: { identity: 
                     <a href={collection.parquet_url}>Bảng huấn luyện Parquet</a>
                     <a href={collection.release_url} target="_blank" rel="noreferrer">Mở kho dữ liệu job <ExternalLink size={14} /></a>
                 </div>
+                <SolverDownload key={identity + (collection.source_fingerprint ?? "")} identity={identity} runs={data.solver_runs ?? []} />
                 {collection.full_bundle ? <div className="full-download">
                     <h3>Tải toàn bộ thư mục, gồm ODB / CAE / INP</h3>
                     <p>{collection.full_bundle.storage_mode === "direct-source-parts"

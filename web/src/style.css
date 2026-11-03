@@ -465,6 +465,15 @@ dd {
 .data-file span { flex-shrink: 0; font-size: 12px; padding-top: 10px; font-variant-numeric: tabular-nums; }
 .data-file-info { padding: 16px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
 .full-download { margin: 24px 0; padding: 16px 0; border-block: 1px solid var(--line); }
+.solver-download { margin: 24px 0; padding-top: 20px; border-top: 1px solid var(--line); }
+.solver-download .field { max-width: 100%; }
+.solver-download select { width: 100%; min-width: 0; }
+.solver-file-types { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 20px 0; padding: 12px 16px; border: 1px solid var(--line); }
+.solver-file-types label { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.solver-file-types input { width: 18px; height: 18px; margin: 0; }
+.solver-download caption { text-align: left; font-weight: 600; padding-bottom: 8px; }
+.solver-download td:first-child { overflow-wrap: anywhere; }
+.solver-download code { overflow-wrap: anywhere; }
 @media (max-width: 640px) {
     .training-contract { grid-template-columns: minmax(0, 1fr); gap: 6px; }
     .training-contract dd { margin-bottom: 12px; }
