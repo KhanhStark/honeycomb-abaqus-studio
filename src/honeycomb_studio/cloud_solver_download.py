@@ -19,7 +19,7 @@ TYPES = {"cae", "odb", "inp"}
 
 
 def solver_choices(collection, job):
-    groups = {}
+    groups: dict[str, dict] = {}
     for file in collection.get("files", []):
         match = SOLVER_PATH.fullmatch(file["path"])
         path = PurePosixPath(file["path"])
