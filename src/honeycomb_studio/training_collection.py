@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import shutil
+from copy import deepcopy
 from pathlib import Path
 
 import pyarrow as pa
@@ -39,6 +40,21 @@ def collect_runs(root: Path):
             attempt["path"] = str(file.parent / "attempts" / f"{number:03d}")
         runs.append(run)
     return runs
+
+
+def apply_history_audit(runs, audit):
+    """Apply verified later findings to derived tables, preserving source archives."""
+    if audit.get('passed') is not False:
+        return
+    for run in runs:
+        run.setdefault('original_publication_quality', deepcopy(run.get('quality')))
+        run['status'] = 'review'
+        run['history_audit'] = deepcopy(audit)
+        quality = dict(run.get('quality') or {})
+        finding = 'Original ODB history contains a recovery gap; rerun required.'
+        quality.update(ml_eligible=False, numerical_quality='review',
+                       findings=list(dict.fromkeys([*quality.get('findings', []), finding])))
+        run['quality'] = quality
 
 
 class CollectionStore:

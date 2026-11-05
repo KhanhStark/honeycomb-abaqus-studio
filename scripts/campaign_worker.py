@@ -95,18 +95,17 @@ def execute(work, github, catalog, key):
         run = store.list('runs', batch['id'])[0]
     batch.update(status='running', pause_requested=False, stop_immediately=False)
     store.save('batches', batch)
-    control = ROOT / 'continuation_control.o'
-    subprocess.run(['cc', '-O2', '-fPIC', '-c', 'scripts/linux_media/continuation_control.c', '-o', str(control)], check=True)
+    control = Path('scripts/linux_media/continuation_control.c').resolve()
     deadline = time.monotonic() + max(0, 240 * 60 - (time.time() - float(os.environ['HONEYCOMB_WORKFLOW_STARTED_EPOCH'])))
     progress = Progress(github, TicketProgress(catalog, key), work['ticket'], store, batch['id'], deadline)
-    with native_runtime(ROOT) as executable:
+    with native_runtime(ROOT, continuation=True) as executable:
         release_info = subprocess.run(solver.command(str(executable), 'information=release'), cwd=ROOT,
                                       check=True, text=True, capture_output=True, timeout=90)
         if '2020' not in release_info.stdout:
             raise ValueError('Installed runtime release differs')
         engine = Engine(store, abaqus=str(executable), fake=False)
         engine.explicit_continuation = True
-        engine.continuation_user_object = control
+        engine.continuation_control = control
         engine.runtime_fingerprint = runtime_hash
         for sig in (signal.SIGTERM, signal.SIGINT):
             signal.signal(sig, lambda *_: progress.stop_solver('cancelled'))

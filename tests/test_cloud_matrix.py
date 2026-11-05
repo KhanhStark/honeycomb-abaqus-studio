@@ -10,6 +10,7 @@ from honeycomb_studio.cloud_matrix import (
     matrix_entries,
     matrix_plan,
     prepare,
+    recover,
     workflow_title,
 )
 from honeycomb_studio.models import BatchSpec, ModelSpec, digest, expand
@@ -164,3 +165,25 @@ def test_preparation_failure_and_early_cancel_become_terminal_without_shards():
     claimed = prepare(batch(), 124)
     with pytest.raises(ValueError, match="own"):
         finalize(claimed, 123)
+
+
+def test_only_explicitly_audited_review_is_repaired_and_prior_archive_is_retained():
+    parent = prepare(batch(), 123)
+    for shard in parent['shards']:
+        shard.update(status='completed', archive_verified=True, release_url='https://example.test/' + shard['id'])
+    parent['shards'][1].update(status='review', history_audit={'passed': False})
+    parent = finalize(parent, 123)
+    original = deepcopy(parent)
+    repaired = recover(parent, 124, repair_indices=[1])
+    assert parent == original
+    assert repaired['shards'][0] == original['shards'][0]
+    assert repaired['shards'][2] == original['shards'][2]
+    target = repaired['shards'][1]
+    assert target['id'] != original['shards'][1]['id'] and target['status'] == 'draft'
+    assert target['spec'] == original['shards'][1]['spec']
+    assert target['previous_attempts'] == [original['shards'][1]]
+    with pytest.raises(ValueError, match='audit'):
+        recover(parent, 124, repair_indices=[0])
+    parent['status'] = 'running'
+    with pytest.raises(ValueError, match='terminal'):
+        recover(parent, 124, repair_indices=[1])

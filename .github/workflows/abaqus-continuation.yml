@@ -9,6 +9,16 @@ on:
       job_name:
         required: false
         type: string
+      recover:
+        description: Retry failed designs while retaining verified results
+        required: false
+        type: boolean
+        default: false
+      repair_indices:
+        description: JSON indices of reviewed designs with failed original-history audits
+        required: false
+        type: string
+        default: '[]'
 permissions:
   contents: write
   checks: write
@@ -53,8 +63,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CLOUD_JOB_ID: ${{ inputs.job_id }}
+          CLOUD_REPAIR_INDICES: ${{ inputs.repair_indices }}
         run: |
-          uv run --locked --extra cloud python scripts/cloud_matrix.py prepare --job-id "$CLOUD_JOB_ID"
+          uv run --locked --extra cloud python scripts/cloud_matrix.py prepare --job-id "$CLOUD_JOB_ID" ${{ inputs.recover && '--recover' || '' }} --repair-indices "${CLOUD_REPAIR_INDICES:-[]}"
   segment0:
     needs: [prepare]
     uses: ./.github/workflows/explicit-stage.yml

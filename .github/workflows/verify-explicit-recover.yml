@@ -12,6 +12,7 @@ jobs:
       ABAQUS_MEDIA_DRIVE_FILE_ID: ${{ vars.ABAQUS_MEDIA_DRIVE_FILE_ID }}
       ABAQUS_LICENSE_ENDPOINT: ${{ secrets.ABAQUS_LICENSE_ENDPOINT }}
       ABAQUS_VENDOR_PORT: ${{ secrets.ABAQUS_VENDOR_PORT }}
+      HONEYCOMB_INSTALL_CAA: '1'
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -47,3 +48,5 @@ jobs:
             /tmp/honeycomb-recover-probe/*.log
             /tmp/honeycomb-recover-probe/*.sta
             /tmp/honeycomb-recover-probe/*.json
+            /tmp/honeycomb-recover-probe/*.txt
+            output/install-probe/caa-installer.log

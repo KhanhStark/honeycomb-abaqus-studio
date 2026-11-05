@@ -5,7 +5,12 @@ mkdir -p "$RUNNER_TEMP/abaqus-mount" output/install-probe
 sudo chown 1000:1000 output/install-probe
 sudo mount -o loop,ro "$media" "$RUNNER_TEMP/abaqus-mount"
 docker volume create honeycomb-install
+optional_caa=()
+if [[ "${HONEYCOMB_INSTALL_CAA:-0}" == "1" ]]; then
+  optional_caa=(--env HONEYCOMB_INSTALL_CAA=1)
+fi
 docker run --label honeycomb.actions=true --rm --network none --cap-drop ALL --security-opt no-new-privileges \
+  "${optional_caa[@]}" \
   --pids-limit 512 --memory 8g \
   --mount "type=bind,source=$RUNNER_TEMP/abaqus-mount,target=/media,readonly" \
   --mount "type=bind,source=$PWD/output/install-probe,target=/results" \

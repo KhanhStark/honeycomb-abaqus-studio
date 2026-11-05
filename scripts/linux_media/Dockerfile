@@ -7,7 +7,7 @@ RUN sed -i -e 's|^mirrorlist=|#mirrorlist=|' \
     && yum install -y ca-certificates python3 python3-pip tcsh ksh redhat-lsb-core \
     libjpeg-turbo motif mesa-libGLU libXext libXrender libXt libXi libSM libICE \
     ncurses-libs libX11 libXmu libXpm compat-libstdc++-33 libpng12 libXp \
-    file hostname which findutils tar gzip perl libgomp \
+    file hostname which findutils tar gzip perl libgomp gcc-c++ \
     xorg-x11-server-Xvfb mesa-dri-drivers xorg-x11-fonts-Type1 xorg-x11-fonts-misc \
     && python3 -m pip install --no-cache-dir pexpect==4.9.0 \
     && perl -e 'print "Perl prerequisite ready\n"' \

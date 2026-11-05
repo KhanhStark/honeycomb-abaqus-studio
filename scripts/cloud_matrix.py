@@ -14,14 +14,23 @@ def main():
     parser.add_argument("phase", choices=["prepare", "finalize"])
     parser.add_argument("--job-id", required=True)
     parser.add_argument("--recover", action="store_true")
+    parser.add_argument("--repair-indices", default="[]")
     args = parser.parse_args()
     if not JOB_ID.fullmatch(args.job_id):
         raise ValueError("Invalid job ID")
     github = Github(token=os.environ["GITHUB_TOKEN"])
     catalog = Catalog(github)
     workflow = int(os.environ["GITHUB_RUN_ID"])
-    transform = (recover if args.recover else prepare) if args.phase == "prepare" else finalize
-    value = catalog.update("jobs/" + args.job_id, lambda old: transform(old, workflow))
+    indices = json.loads(args.repair_indices)
+    if indices and not args.recover:
+        raise ValueError('History repair requires explicit recovery mode')
+    def transform(old):
+        if args.phase == 'finalize':
+            return finalize(old, workflow)
+        if args.recover:
+            return recover(old, workflow, repair_indices=indices)
+        return prepare(old, workflow)
+    value = catalog.update("jobs/" + args.job_id, transform)
     if args.phase == "prepare":
         source_tag = f"training-{workflow}-{os.getenv('GITHUB_RUN_ATTEMPT', '1')}"
         reserve_release(github, tag=source_tag,

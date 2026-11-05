@@ -32,6 +32,7 @@ jobs:
       ABAQUS_MEDIA_DRIVE_FILE_ID: ${{ vars.ABAQUS_MEDIA_DRIVE_FILE_ID }}
       ABAQUS_LICENSE_ENDPOINT: ${{ secrets.ABAQUS_LICENSE_ENDPOINT }}
       ABAQUS_VENDOR_PORT: ${{ secrets.ABAQUS_VENDOR_PORT }}
+      HONEYCOMB_INSTALL_CAA: '1'
     steps:
       - run: echo "HONEYCOMB_WORKFLOW_STARTED_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v7.0.1

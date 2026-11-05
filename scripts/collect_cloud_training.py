@@ -14,7 +14,12 @@ from honeycomb_studio.cloud_matrix import TERMINAL
 from honeycomb_studio.cloud_release import reserve_release
 from honeycomb_studio.cloud_restore import public_asset, restore, validate_manifest
 from honeycomb_studio.models import BatchSpec, expand
-from honeycomb_studio.training_collection import build_collection, collect_runs, training_paths
+from honeycomb_studio.training_collection import (
+    apply_history_audit,
+    build_collection,
+    collect_runs,
+    training_paths,
+)
 
 
 def collect(github, catalog, root):
@@ -76,6 +81,9 @@ def collect(github, catalog, root):
             restored = root / shard["id"]
             restore(archive, restored, client=github.client, paths=training_paths(archive))
             runs = collect_runs(restored)
+            apply_history_audit(runs, shard.get('history_audit') or {})
+            if shard.get('history_audit'):
+                source['history_audit'] = shard['history_audit']
             expected = {r["id"] for r in shard.get("runs", [])}
             if expected != {r["id"] for r in runs}:
                 raise ValueError("Archived run inventory differs from source catalog")

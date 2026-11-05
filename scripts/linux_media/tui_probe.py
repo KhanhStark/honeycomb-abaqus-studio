@@ -6,12 +6,47 @@ This driver supplies no activation tools, server or license file.
 """
 
 import json
+import os
 import re
 import subprocess
 import time
 from pathlib import Path
 
 import pexpect
+
+
+def install_caa():
+    """Install the original companion API package required for user callbacks."""
+    with Path('/results/caa-installer.log').open('w', buffering=1) as log:
+        child = pexpect.spawn('/bin/bash',
+            ['/media/4/SIMULIA_EstablishedProducts_CAA_API/Linux64/1/StartTUI.sh'],
+            encoding='utf-8', codec_errors='replace', timeout=900, dimensions=(50, 160))
+        child.logfile_read = log
+        try:
+            for _ in range(50):
+                index = child.expect([r'Enter selection(?: \(default: (?:Next|Install|Close)\))?:\s*',
+                                      r'Default \[([^\r\n]*)\]:\s*', pexpect.EOF])
+                page = child.before.replace('\r', '')
+                print(page[-4000:], flush=True)
+                if index == 2:
+                    child.close()
+                    if child.exitstatus != 0:
+                        raise RuntimeError('CAA installer failed; inspect caa-installer.log')
+                    return
+                answer = ''
+                if index == 1:
+                    default = child.match.group(1)
+                    if default not in ('/usr/SIMULIA/EstProducts/2020', '/opt/SIMULIA/EstProducts/2020'):
+                        raise RuntimeError('Unrecognized CAA path question: ' + default)
+                    answer = '/opt/SIMULIA/EstProducts/2020'
+                elif not any(word in page for word in ('Welcome', 'Legal Notices', 'enough information',
+                                                       'Installation', 'installation', 'press Enter')):
+                    raise RuntimeError('Unrecognized CAA installer question; inspect caa-installer.log')
+                child.sendline(answer)
+            raise RuntimeError('CAA installer prompt limit exceeded')
+        finally:
+            if child.isalive():
+                child.close(force=True)
 
 
 def main():
@@ -117,6 +152,9 @@ def main():
         if result.get("installer_exit_code") != 0 or not command.exists():
             raise RuntimeError("Installer did not create a successful Abaqus installation")
         result["installation_completed"] = True
+        if os.getenv('HONEYCOMB_INSTALL_CAA') == '1':
+            install_caa()
+            result['caa_api_installed'] = True
         for label, args in [
             ("release", ["information=release"]),
             ("odb_import", ["python", "-c", "import sys,odbAccess; print(sys.version)"]),

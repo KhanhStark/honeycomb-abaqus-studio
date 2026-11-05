@@ -25,7 +25,7 @@ def license_settings(endpoint, vendor):
 
 
 @contextmanager
-def native_runtime(root):
+def native_runtime(root, *, continuation=False):
     manager, host, vendor = license_settings(
         os.environ["ABAQUS_LICENSE_ENDPOINT"], os.environ["ABAQUS_VENDOR_PORT"]
     )
@@ -38,6 +38,10 @@ def native_runtime(root):
     config.write_text("license_server_type=FLEXNET\nabaquslm_license_file="
                       + repr(os.environ["ABAQUS_LICENSE_ENDPOINT"])
                       + "\nmp_mode=THREADS\nparallel=DOMAIN\n", encoding="utf-8")
+    if continuation:
+        # This callback contains C only; do not invoke the default Fortran driver.
+        with config.open('a') as stream:
+            stream.write("link_sl=['g++','-shared','-Wl,--add-needed','%E','-Wl,-soname,%U','-o','%U','%F','%A','%L','%B']\n")
     settings = {
         "HONEYCOMB_IMPACT_ROOT": str(root), "HONEYCOMB_LICENSE_HOST": host,
         "HONEYCOMB_ADAPTERS": str(ADAPTERS), "HONEYCOMB_LICENSE_CONFIG": str(config),
