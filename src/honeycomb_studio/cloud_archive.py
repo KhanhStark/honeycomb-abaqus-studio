@@ -123,6 +123,22 @@ class ReleaseArchive:
             expected = "sha256:" + hashlib.file_digest(source, "sha256").hexdigest()
         for asset in assets:
             if asset["name"] == name:
+                if asset.get("state") == "starter" and not asset.get("digest"):
+                    # A GitHub 500/502 can leave an unfinished upload occupying
+                    # this immutable name. Re-read it before cleanup: a response
+                    # may have been lost after the upload actually completed.
+                    current = self.github.repo("GET", f"/releases/assets/{asset['id']}", allow_missing=True)
+                    if current is not None and (current.get("id") != asset["id"] or current.get("name") != name):
+                        raise ValueError("Release asset identity changed during upload recovery")
+                    if current is None or (current.get("state") == "starter" and not current.get("digest")):
+                        if current is not None:
+                            self.github.repo("DELETE", f"/releases/assets/{asset['id']}", allow_missing=True)
+                        assets[:] = [a for a in assets if a["id"] != asset["id"]]
+                        if logger:
+                            logger.emit("RETRY", f"{name} | Đã dọn upload starter chưa hoàn tất; tải lại và kiểm tra SHA-256")
+                        break
+                    assets[assets.index(asset)] = current
+                    asset = current
                 if asset.get("digest") != expected or asset["size"] != path.stat().st_size:
                     raise ValueError("An existing release asset failed digest verification")
                 if logger and asset["size"] >= 1024**2:

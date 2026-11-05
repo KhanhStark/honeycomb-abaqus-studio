@@ -8,6 +8,7 @@ import pytest
 
 from honeycomb_studio.cloud_archive import ReleaseArchive
 from honeycomb_studio.cloud_publication import prepare
+from honeycomb_studio.cloud_github import Github
 
 
 def test_many_reductions_bundle_losslessly_and_large_files_are_not_copied(tmp_path):
@@ -68,3 +69,61 @@ def test_upload_retries_after_lost_response_and_reuses_verified_asset(tmp_path, 
     asset["digest"] = "sha256:" + "0" * 64
     with pytest.raises(ValueError, match="digest"):
         ReleaseArchive(Remote(), 1).upload(path, "test.part")
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_upload_recovers_incomplete_starter_left_by_github_502(tmp_path, monkeypatch, existing):
+    payload = b"complete original solver result"
+    path = tmp_path / "result"
+    path.write_bytes(payload)
+    # Actual failed campaign assets retained a nonzero reported size, but no
+    # digest. GitHub marks these unfinished uploads as starter, not uploaded.
+    starter = {"id": 7, "name": "result.part", "state": "starter", "size": 203, "digest": None}
+    uploaded = {**starter, "id": 8, "state": "uploaded", "size": len(payload),
+                "digest": "sha256:" + hashlib.sha256(payload).hexdigest(),
+                "browser_download_url": "https://github.com/fixture/result.part"}
+    assets = [starter] if existing else []
+    posts, deleted = [], []
+
+    def handle(request):
+        if request.method == "GET":
+            return httpx.Response(200, json=assets if "/assets?" in str(request.url) else assets[0])
+        if request.method == "DELETE":
+            assert request.url.path.endswith("/releases/assets/7")
+            deleted.append(assets.pop())
+            return httpx.Response(204)
+        posts.append(request.read())
+        if not existing and len(posts) == 1:
+            assets.append(starter)
+            return httpx.Response(502, json={"message": "Error updating policy"})
+        assets.append(uploaded)
+        return httpx.Response(201, json=uploaded)
+
+    monkeypatch.setattr("honeycomb_studio.cloud_archive.time.sleep", lambda _: None)
+    github = Github(token="fixture", client=httpx.Client(transport=httpx.MockTransport(handle)))
+    result = ReleaseArchive(github, 1).upload(path, "result.part")
+    assert result["asset_id"] == 8
+    assert posts == [payload] * (1 if existing else 2)
+    assert deleted == [starter]
+    assert assets == [uploaded]
+
+
+def test_starter_that_completed_before_cleanup_is_verified_and_preserved(tmp_path):
+    payload = b"result accepted after a lost response"
+    path = tmp_path / "result"
+    path.write_bytes(payload)
+    starter = {"id": 7, "name": "result.part", "state": "starter", "size": 203, "digest": None}
+    uploaded = {**starter, "state": "uploaded", "size": len(payload),
+                "digest": "sha256:" + hashlib.sha256(payload).hexdigest(),
+                "browser_download_url": "https://github.com/fixture/result.part"}
+
+    def handle(request):
+        assert request.method == "GET"  # Never delete or overwrite a completed upload.
+        return httpx.Response(200, json=[starter] if "/assets?" in str(request.url) else uploaded)
+
+    github = Github(token="fixture", client=httpx.Client(transport=httpx.MockTransport(handle)))
+    result = ReleaseArchive(github, 1).upload(path, "result.part")
+    assert result["asset_id"] == 7
+    uploaded["digest"] = "sha256:" + "0" * 64
+    with pytest.raises(ValueError, match="digest"):
+        ReleaseArchive(github, 1).upload(path, "result.part")
