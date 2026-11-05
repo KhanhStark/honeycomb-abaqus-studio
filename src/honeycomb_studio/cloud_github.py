@@ -12,7 +12,22 @@ from typing import Any
 
 import httpx
 
-REPOSITORY = "xuankhanh24/honeycomb-abaqus-studio"
+DEFAULT_REPOSITORY = "xuankhanh24/honeycomb-abaqus-studio"
+
+
+def configured_repository(environment=None):
+    """Keep worker catalogs and release URLs in their executing repository."""
+    environment = os.environ if environment is None else environment
+    value = (environment.get("HONEYCOMB_GITHUB_REPOSITORY")
+             or environment.get("GITHUB_REPOSITORY") or DEFAULT_REPOSITORY)
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}", value):
+        raise ValueError("Invalid GitHub repository; expected owner/name")
+    if value.split("/")[1] in (".", ".."):
+        raise ValueError("Invalid GitHub repository name")
+    return value
+
+
+REPOSITORY = configured_repository()
 JOB_ID = re.compile(r"^[a-f0-9]{32}$")
 
 
