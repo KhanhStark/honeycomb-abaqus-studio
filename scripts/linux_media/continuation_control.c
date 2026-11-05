@@ -21,8 +21,21 @@ void vexternaldb_(const int *operation, int *integers, const int *integer_count,
                  double *reals, const int *real_count)
 {
     static int pending = 0;
+    static int initialized = 0;
     static unsigned int polls = 0;
     char stop_path[PATH_MAX], ack_path[PATH_MAX];
+    if (!initialized) {
+        char metadata[PATH_MAX];
+        if (control_path(metadata, sizeof(metadata), "continuation-control.json")) {
+            FILE *receipt = fopen(metadata, "w");
+            if (receipt) {
+                fprintf(receipt, "{\"first_operation\":%d,\"integer_count\":%d,\"real_count\":%d}\n",
+                        *operation, *integer_count, *real_count);
+                fclose(receipt);
+            }
+        }
+        initialized = 1;
+    }
     if (*integer_count < 6 || *real_count < 3) return;
     if (!control_path(stop_path, sizeof(stop_path), "continuation.stop") ||
         !control_path(ack_path, sizeof(ack_path), "continuation-stop-ack.json")) return;
