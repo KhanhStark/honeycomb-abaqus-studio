@@ -144,6 +144,10 @@ def sta_progress(path: Path, duration: float) -> dict:
                 solver_percent=min(100.0, 100 * float(step) / duration),
             )
             break
+    # VEXTERNALDB can close a solver cleanly before its requested end time.
+    # The success banner alone must not make that checkpoint a solved model.
+    result['solver_success'] = bool(result['solver_success'] and not result['solver_error']
+                                    and float(result.get('simulation_time_s', 0)) >= duration * .999)
     return result
 
 

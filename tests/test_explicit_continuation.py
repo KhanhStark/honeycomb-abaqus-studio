@@ -51,7 +51,9 @@ def test_engine_continues_original_attempt_without_building(monkeypatch, tmp_pat
         assert phase == 'solving' and 'recover' in args
         assert 'job=original' in args and not any(v.startswith('input=') for v in args)
         calls.append(args)
-        (attempt_path / 'raw/original.sta').write_text('THE ANALYSIS HAS COMPLETED SUCCESSFULLY')
+        (attempt_path / 'raw/original.sta').write_text(
+            ' 101338 6.000E-03 6.000E-03 00:23:48 5.704E-08 26813 3.013E+02 7.002E+03\n'
+            'THE ANALYSIS HAS COMPLETED SUCCESSFULLY')
     monkeypatch.setattr(engine, '_monitor', monitor)
     monkeypatch.setattr(engine, '_postprocess', lambda *args: None)
     engine._execute(run, batch)

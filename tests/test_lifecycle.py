@@ -95,6 +95,13 @@ def test_sta_and_process_identity(tmp_path):
     assert not owned_alive({"pid": 99999999, "created": 1})
 
 
+def test_successful_orderly_stop_is_not_a_completed_physical_analysis(tmp_path):
+    file = tmp_path / 'partial.sta'
+    file.write_text(' 101338 6.000E-03 6.000E-03 00:23:48 5.704E-08 26813 3.013E+02 7.002E+03\n'
+                    ' THE ANALYSIS HAS COMPLETED SUCCESSFULLY\n')
+    assert sta_progress(file, .012)['solver_success'] is False
+
+
 def test_missing_odb_does_not_create_batch(tmp_path):
     store = Store(tmp_path)
     e = Engine(store)

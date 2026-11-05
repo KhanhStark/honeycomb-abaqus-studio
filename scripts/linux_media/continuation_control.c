@@ -5,6 +5,9 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#ifdef __cplusplus
+extern "C"
+#endif
 void vexternaldb_(const int *operation, int *integers, const int *integer_count,
                  double *reals, const int *real_count)
 {

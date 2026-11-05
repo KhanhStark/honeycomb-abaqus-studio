@@ -47,8 +47,8 @@ j.writeInput(consistencyChecking=ON)
 def main():
     ROOT.mkdir()
     (ROOT / 'build.py').write_text(BUILD)
-    control = ROOT / 'continuation_control.o'
-    subprocess.run(['cc', '-O2', '-fPIC', '-c', 'scripts/linux_media/continuation_control.c', '-o', str(control)], check=True)
+    control = ROOT / 'continuation_control.c'
+    shutil.copy2('scripts/linux_media/continuation_control.c', control)
     reader = ROOT / 'read_history.py'
     reader.write_text('''from odbAccess import openOdb
 import json, sys
