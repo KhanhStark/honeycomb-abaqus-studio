@@ -25,3 +25,15 @@ Archive INP/ODB/log/checkpoint with checksums, consolidated CSV and per-design i
 ## Implementation record
 
 2026-11-06: schema, material deck adapter, analytic cone, per-part energy and connected rear-face metrics implemented. Reproducible 400-design draft generated at C:/UET/DO_AN/output/core-damage-v2-20261106/campaign.json. Local CAE exits before build starts; Linux validation is required. All eight CLI identities authenticated by the human. Five new repository/Actions/OIDC/App setups remain to be verified. Production is not dispatched.
+
+### Review and verification, 2026-11-06
+
+- Standards review: no documented standard violations; one judgment call concerning identity dictionaries. Reliability findings addressed: repository-specific App token refresh, lost analysis dispatch reconciliation, bounded numerical retries, missing execution tickets, and actual solver status in progress receipts.
+- Spec review: corrected whole-model energy selection for the real `Assembly ASSEMBLY` region, rejected optional global energies available only on part regions, bounded failed qualification retries, selected-model Pareto drift across development updates, and FE dominance against all accepted known designs including the reference.
+- Pareto stability uses normalized symmetric front distance <=0.05 (development P95-P5). The first fit supplies no stability evidence; the bounded adaptive batch measures the change after adding data.
+- Artificial energy is checked at every recorded instant with ALLIE >=1% of initial kinetic energy; maximum |ALLAE|/|ALLIE| must be <=5%. This explicit developed-impact window avoids the initial zero denominator. The legacy ratio of separate maxima remains an exported diagnostic.
+- ODB damage completeness requires U, STATUS, PEEQ, SDEG, JCCRT and temperature, with clamp connectivity. DMICRT is the requested field group; it produces JCCRT in the ODB.
+- `physics_hash` pins the complete resolved solver contract, including numerics, for exact continuation compatibility. `physical_inputs_hash` and `numerical_inputs_hash` additionally separate physical design identity from mesh/time/output/solver choices. Retry identity remains in ticket, attempt and segment fields.
+- Three real local Abaqus2017 material coupons passed. Cross-runner damage/thermal/motion preservation must still pass on the pinned Linux2020 runtime before pilot admission.
+- Python suite: 308 passed; frontend: 12 passed and production build passed. Subsequent identity changes receive focused verification before publication.
+- GitHub App installed on six owners; two installation confirmations and a usable App private key remain pending. Drive/media and local license-port preflight passed; five new repository OIDC identities remain pending human confirmation.

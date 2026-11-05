@@ -75,7 +75,7 @@ def publish_validation(catalog, evidence):
     archive = json.loads(Path('output/campaign-archive-restore.json').read_text())
     if (not pending or pending['source_sha'] != evidence['source_sha']
             or not all(report.get('passed') is True for report in (pending['material'], restart, archive))
-            or restart.get('cross_runner') is not True):
+            or restart.get('cross_runner') is not True or restart.get('damage_state_verified') is not True):
         raise ValueError('Qualification is incomplete')
     catalog.update('campaign-validation/latest', lambda old: {**evidence, 'cross_runner': True,
                    'material': pending['material'], 'restart': restart, 'archive_restore': archive})

@@ -26,7 +26,8 @@ def test_rear_peak_ignores_detached_nodes_and_remembers_deletion():
                   for instance in ("BOTTOM-1", "CORE-1", "TOP-1") for i in (1, 2, 3)]
         u = [Obj(instance=Obj(name="BOTTOM-1"), nodeLabel=i, data=(0, 0, z))
              for i, z in enumerate(displacement, 1)]
-        return Obj(fieldOutputs={"U": Field(u), "STATUS": Field(status)})
+        return Obj(fieldOutputs={"U": Field(u), "STATUS": Field(status),
+                                 **{k: Field(status) for k in ('PEEQ', 'SDEG', 'JCCRT', 'TEMP')}})
 
     metric.frame(frame([], [.2] * 6), 0)
     metric.frame(frame([], [.2, -.8, -1.8, -.8, -.8, -.8]), .001)
@@ -36,3 +37,7 @@ def test_rear_peak_ignores_detached_nodes_and_remembers_deletion():
     assert summary["max_rear_raw_downward_mm"] == 100
     assert summary["rear_skin_deleted"] is True
     assert summary["damage_fields_complete"] is True
+    missing = frame([], [.2] * 6)
+    del missing.fieldOutputs['JCCRT']
+    metric.frame(missing, .003)
+    assert metric.summary()['damage_fields_complete'] is False

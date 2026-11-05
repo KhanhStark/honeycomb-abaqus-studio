@@ -37,7 +37,7 @@ jobs:
       - name: Verify JC initiation, softening, deletion and thermal units
         run: uv run --locked --extra cloud python scripts/campaign_validate.py
       - name: Save orderly Explicit checkpoint for another runner
-        run: uv run --locked --extra cloud python scripts/verify_explicit_recover.py --stage create
+        run: uv run --locked --extra cloud python scripts/verify_explicit_recover.py --stage create --damage
       - name: Publish checksummed checkpoint without rerunning the solver
         run: uv run --locked --extra cloud python scripts/campaign_evidence.py publish-checkpoint
       - run: uv run --locked --extra cloud python scripts/campaign_evidence.py infrastructure
@@ -76,7 +76,7 @@ jobs:
           audience: ${{ secrets.TS_AUDIENCE }}
           drive_credentials: ${{ secrets.HONEYCOMB_DRIVE_CREDENTIALS_JSON }}
       - run: uv run --locked --extra cloud python scripts/campaign_evidence.py restore
-      - run: uv run --locked --extra cloud python scripts/verify_explicit_recover.py --stage restore
+      - run: uv run --locked --extra cloud python scripts/verify_explicit_recover.py --stage restore --damage
       - run: uv run --locked --extra cloud python scripts/campaign_evidence.py publish-validation
       - uses: actions/upload-artifact@v7.0.2
         if: always()

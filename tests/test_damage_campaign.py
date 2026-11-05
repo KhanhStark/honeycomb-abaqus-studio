@@ -8,6 +8,7 @@ from honeycomb_studio.campaign import (
     campaign_manifest,
     freeze,
     geometry_valid,
+    model_hashes,
     one_run_spec,
     pilots,
     reference_model,
@@ -28,6 +29,14 @@ def test_reference_contract_units_and_identity():
     with pytest.raises(ValueError):
         reference_model(core_material={**model.core_material.model_dump(), "johnson_cook": {"d3": -47}})
     assert ModelSpec().impactor_shape == "sphere"
+    before = model_hashes(model)
+    mesh = model_hashes(reference_model(core_centre_seed=.35))
+    foil = model_hashes(reference_model(foil=.05))
+    assert before['physical_inputs_hash'] == mesh['physical_inputs_hash']
+    assert before['numerical_inputs_hash'] != mesh['numerical_inputs_hash']
+    assert before['physical_inputs_hash'] != foil['physical_inputs_hash']
+    assert before['numerical_inputs_hash'] == foil['numerical_inputs_hash']
+    assert before['physics_hash'] != mesh['physics_hash']
 
 
 def test_manifest_reproducible_valid_partition_and_fail_closed():

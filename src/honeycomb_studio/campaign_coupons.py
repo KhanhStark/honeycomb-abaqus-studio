@@ -39,3 +39,28 @@ def write_coupon(directory: Path, case: str):
     rewrite_input(str(deck), model.resolved(), {"REF": c.model_dump()})
     return {"case": case, "material_hash": digest(c.model_dump()), "deck": str(deck),
             "purpose": "implementation-only; not physical calibration"}
+
+
+def write_recovery_coupon(directory: Path):
+    """Four shell elements: nonzero plasticity, damage, heat and motion before an orderly stop."""
+    directory.mkdir(parents=True, exist_ok=True)
+    nodes = '\n'.join(f'{1 + x + 3*y},{x/2},{y/2},0' for y in range(3) for x in range(3))
+    deck = directory / 'recover_probe.inp'
+    deck.write_text('*Heading\nDamage-state recovery qualification\n*Node\n' + nodes + '\n'
+        '*Element,type=S4R,elset=PATCH\n1,1,2,5,4\n2,2,3,6,5\n3,4,5,8,7\n4,5,6,9,8\n'
+        '*Nset,nset=ALL,generate\n1,9,1\n*Nset,nset=SANDWICH_NODES,generate\n1,9,1\n'
+        '*Nset,nset=LEFT\n1,4,7\n*Nset,nset=RIGHT\n3,6,9\n'
+        '*Shell Section,elset=PATCH,material=REF\n1.,5\n'
+        '*Material,name=REF\n*Density\n2.7e-9\n*Elastic\n70000,.33\n*Plastic\n324,0\n'
+        '*Boundary\nALL,2,6\nLEFT,1,1\n'
+        '*Amplitude,name=RAMP,definition=SMOOTH STEP\n0.,0.,.002,.15,.04,.16,.06,1.\n'
+        '*Step,name=Test,nlgeom=YES\n*Dynamic,Explicit\n,.06,,.00003\n'
+        '*Boundary,amplitude=RAMP\n2,1,1,1.5\n5,1,1,1.5\n8,1,1,1.5\nRIGHT,1,1,3.\n'
+        '*Restart,write,number interval=1000,time marks=NO,overlay\n'
+        '*Output,field,number interval=1000\n*Element Output\nS,PEEQ,STATUS,SDEG,DMICRT,TEMP\n'
+        '*Node Output\nU,V,RF\n*Output,history,time interval=.00006\n'
+        '*Energy Output\nALLIE,ALLPD,ALLDMD,ALLAE,ALLKE,ALLWK,ETOTAL\n'
+        '*Node Output,nset=RIGHT\nU1,V1,RF1\n*End Step\n', encoding='ascii')
+    model = reference_model()
+    rewrite_input(str(deck), model.resolved(), {'REF': model.core_material.model_dump()})
+    return deck

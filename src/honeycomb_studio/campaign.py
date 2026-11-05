@@ -16,6 +16,12 @@ OWNERS = ("luukhanh24", "KhanhStark", "xuankhanh24", "dzdeptrai390",
 BOUNDS = {"reentrant_delta_deg": (25., 45.), "foil": (.035, .115),
           "cell_size": (4.5, 8.2), "reentrant_cell_height": (3., 7.)}
 BASE = {"reentrant_delta_deg": 35., "foil": .0635, "cell_size": 6.35, "reentrant_cell_height": 5.}
+NUMERICAL_PARAMETERS = frozenset((
+    'duration', 'cpus', 'precision', 'mass_scaling', 'bulk_linear', 'bulk_quadratic',
+    'field_intervals', 'history_intervals', 'field_variables', 'history_variables',
+    'mesh_preset', 'core_centre_seed', 'core_outer_seed', 'skin_centre_seed', 'skin_outer_seed',
+    'reentrant_depth_seed', 'core_z_divisions', 'ball_seed', 'fine_radius', 'skin_patch_half',
+    'shell_element', 'shell_points', 'min_segment_length', 'tie_tolerance'))
 
 
 def reference_model(**updates) -> ModelSpec:
@@ -44,10 +50,17 @@ def geometry_valid(values):
     return throat > max(8 * model.foil, .5)
 
 
+def model_hashes(model):
+    resolved = model.resolved()
+    return {'physics_hash': digest(resolved),
+            'physical_inputs_hash': digest({k: v for k, v in resolved.items() if k not in NUMERICAL_PARAMETERS}),
+            'numerical_inputs_hash': digest({k: v for k, v in resolved.items() if k in NUMERICAL_PARAMETERS})}
+
+
 def record(model, role, index, owner, varied):
     return {"id": f"{role}-{index:04d}", "role": role, "owner": owner,
             "repository": owner + "/honeycomb-abaqus-studio", "varied_parameters": varied,
-            "physics_hash": digest(model.resolved()), "model": model.model_dump(),
+            **model_hashes(model), "model": model.model_dump(),
             "status": "pending", "attempt": 0, "segment": 0}
 
 
@@ -116,7 +129,7 @@ def numerical_gate(summary):
         if summary.get(key) is not True:
             errors.append(key)
     for key, ceiling in (("maximum_energy_balance_drift_percent", 5),
-                         ("artificial_energy_over_max_internal_percent", 5),
+                         ("maximum_artificial_energy_ratio_developed_percent", 5),
                          ("contact_force_check_max_relative_percent", 2)):
         value = summary.get(key)
         if value is None or not math.isfinite(value) or value > ceiling:
@@ -177,7 +190,7 @@ def freeze(manifest, velocity, duration, mesh_factor, evidence):
                                 history_intervals=round(duration / .000002))
         for key in ("core_centre_seed", "core_outer_seed", "skin_centre_seed", "skin_outer_seed", "reentrant_depth_seed"):
             setattr(model, key, getattr(model, key) * mesh_factor)
-        row.update(model=model.model_dump(), physics_hash=digest(model.resolved()))
+        row.update(model=model.model_dump(), **model_hashes(model))
     manifest.update(frozen=True, velocity_m_s=velocity, duration_s=duration,
                     mesh_factor=mesh_factor, gates=evidence)
     manifest["protocol_hash"] = digest({k: manifest[k] for k in

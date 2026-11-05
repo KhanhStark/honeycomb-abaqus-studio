@@ -129,12 +129,12 @@ def history_summary(
             for h in history
             if h["variable"] == var and (not region_contains or region_contains in h["region"].upper())
         ]
+        if not region_contains and (var.startswith('ALL') or var == 'ETOTAL'):
+            items = [h for h in items if h['region'].upper() in ('ASSEMBLY', 'ASSEMBLY ASSEMBLY', 'WHOLE MODEL')]
         if not items:
             if optional:
                 return None
             raise ValueError("ODB thiếu history bắt buộc: " + var + " / " + str(region_contains))
-        if not region_contains and len(items) > 1:
-            items = [h for h in items if h["region"].upper() in ("ASSEMBLY", "ASSEMBLY ASSEMBLY", "WHOLE MODEL")]
         if len(items) != 1:
             raise ValueError("History không duy nhất; không tự đoán region cho " + var)
         return np.asarray(items[0]["data"], dtype=float)
@@ -252,10 +252,18 @@ def history_summary(
         tail = time >= max(0, time[-1] - .0005)
         force_limit = max(1., .01 * float(f[peak]))
         stable_energy = float(np.ptp(core_dissipation[tail])) <= .01 * max(float(core_dissipation[-1]), 1.e-6)
+        # Ignore the initial near-zero denominator; audit every later recorded time,
+        # rather than dividing two maxima that can occur at different times.
+        developed = energies['ALLIE'] >= .01 * abs(k0)
+        artificial_ratio = (float(100 * np.max(np.abs(energies['ALLAE'][developed]) /
+                                             np.abs(energies['ALLIE'][developed])))
+                            if np.any(developed) else None)
         summary.update(physics_version=spec["physics_version"], expected_energy_J=spec["energy_J"],
                        core_mass_kg=core_mass, core_dissipation_J=float(core_dissipation[-1]),
                        SEA_core_J_kg=float(core_dissipation[-1]) / core_mass,
                        history_integrity_passed=integrity["passed"],
+                       maximum_artificial_energy_ratio_developed_percent=artificial_ratio,
+                       developed_impact_internal_energy_threshold_J=.01 * abs(k0),
                        event_finished=bool(np.max(np.abs(f[tail])) <= force_limit and stable_energy),
                        velocity_m_s=spec["velocity_m_s"], foil=spec["foil"],
                        validation_status="AA6061-T6-reference-unvalidated")

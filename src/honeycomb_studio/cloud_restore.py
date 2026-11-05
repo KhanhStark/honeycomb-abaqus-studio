@@ -14,18 +14,19 @@ from urllib.parse import urlparse
 
 import httpx
 
-from .cloud_github import REPOSITORY
+from .cloud_github import REPOSITORY, configured_repository
 
 MAX_PART = 1024**3
 SHA = re.compile(r"^[0-9a-f]{64}$")
 
 
-def public_asset(url: str) -> str:
+def public_asset(url: str, *, repository=None) -> str:
+    repository = configured_repository({'GITHUB_REPOSITORY': repository}) if repository else REPOSITORY
     parsed = urlparse(url)
     if (
         parsed.scheme != "https"
         or parsed.netloc != "github.com"
-        or not parsed.path.startswith(f"/{REPOSITORY}/releases/download/")
+        or not parsed.path.startswith(f"/{repository}/releases/download/")
         or parsed.query
         or parsed.fragment
         or any(p in (".", "..") for p in parsed.path.split("/"))
@@ -55,7 +56,7 @@ def destination(root: Path, relative: str) -> Path:
     return target
 
 
-def validate_manifest(manifest: dict, *, allow_incomplete=False):
+def validate_manifest(manifest: dict, *, allow_incomplete=False, repository=None):
     if manifest.get("kind") != "honeycomb-release-archive" or manifest.get("schema_version") != "1":
         raise ValueError("Unsupported archive manifest")
     if manifest.get("complete") is not True and not allow_incomplete:
@@ -87,17 +88,17 @@ def validate_manifest(manifest: dict, *, allow_incomplete=False):
                 or part.get("digest") != "sha256:" + part["sha256"]
             ):
                 raise ValueError("Non-contiguous parts or inconsistent digest")
-            public_asset(part["url"])
+            public_asset(part["url"], repository=repository)
             offset += part["bytes"]
         if offset != file["bytes"]:
             raise ValueError("Part sizes do not match the original file")
 
 
-def restore(manifest: dict, root: Path, *, client=None, allow_incomplete=False, paths=None):
+def restore(manifest: dict, root: Path, *, client=None, allow_incomplete=False, paths=None, repository=None):
     if client is None:
         with httpx.Client(timeout=120, follow_redirects=True) as transport:
-            return restore(manifest, root, client=transport, allow_incomplete=allow_incomplete, paths=paths)
-    validate_manifest(manifest, allow_incomplete=allow_incomplete)
+            return restore(manifest, root, client=transport, allow_incomplete=allow_incomplete, paths=paths, repository=repository)
+    validate_manifest(manifest, allow_incomplete=allow_incomplete, repository=repository)
     from .actions_log import get_actions_log
 
     logger = get_actions_log()

@@ -1,6 +1,8 @@
 """Durable, per-design Actions dispatch with CAS claims and explicit predecessor receipts."""
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import time
 import uuid
@@ -222,7 +224,7 @@ def apply_outcome(row, result):
         raise ValueError("Unverified output cannot release a solver slot")
     if outcome == "completed":
         value.update(status="completed", summary=result["summary"], quality=result["quality"],
-                     archive_verified=True, archive=result["archive"], workflow_run_id=result["workflow_run_id"],
+                     archive_verified=True, archive=archive_reference(row, result), workflow_run_id=result["workflow_run_id"],
                      solver_wall_seconds=result.get('solver_wall_seconds'),
                      execution_wall_seconds=sum(h.get('execution_wall_seconds') or 0 for h in value.get('execution_history', []))
                      + (result.get('execution_wall_seconds') or 0),
@@ -255,6 +257,19 @@ def apply_outcome(row, result):
          'solver_started_at', 'solver_finished_at')})
     value["ticket"] = None
     return value
+
+
+def archive_reference(row, result):
+    """Keep owner shards bounded; full immutable inventories stay in their release assets."""
+    archive = result['archive']
+    if archive.get('kind') != 'honeycomb-release-archive':
+        return archive
+    payload = json.dumps(archive, indent=2, ensure_ascii=True).encode()
+    ticket = result['ticket']
+    return {'kind': 'honeycomb-archive-reference', 'repository': row['repository'],
+            'manifest_url': f"https://github.com/{row['repository']}/releases/download/core-damage-{ticket}/{ticket}-artifact-manifest.json",
+            'manifest_sha256': hashlib.sha256(payload).hexdigest(), 'complete': archive['complete'],
+            'logical_files': len(archive['files']), 'bytes': sum(f['bytes'] for f in archive['files'])}
 
 
 def receipt_hash(receipt):

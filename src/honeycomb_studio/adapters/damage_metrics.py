@@ -29,6 +29,8 @@ class RearMetrics(object):
 
     def frame(self, frame, total_time):
         outputs = frame.fieldOutputs
+        if any(name not in outputs for name in ('PEEQ', 'SDEG', 'JCCRT', 'TEMP')):
+            self.complete = False
         if 'U' not in outputs:
             self.complete = False
             return
