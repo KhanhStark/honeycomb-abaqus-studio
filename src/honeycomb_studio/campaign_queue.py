@@ -136,7 +136,7 @@ def ramp_capacity(manifest):
     manifest['observed_successful_parallel_solvers'] = peak
     if peak >= stage and len(rows) >= stage:
         stages = (8, 20, 40, 80, 160)
-        next_stage = stages[min(stages.index(stage) + 1, len(stages) - 1)]
+        next_stage = next((level for level in stages if level > stage), stage)
         manifest['capacity_stage'] = min(next_stage, manifest['license_capacity'])
     return manifest
 

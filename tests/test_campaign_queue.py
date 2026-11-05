@@ -3,7 +3,7 @@ import copy
 import pytest
 
 from honeycomb_studio.campaign import campaign_manifest
-from honeycomb_studio.campaign_queue import admission, apply_outcome, available_slots, claim
+from honeycomb_studio.campaign_queue import admission, apply_outcome, available_slots, claim, ramp_capacity
 
 
 def test_claim_cannot_start_duplicate_or_mismatched_continuation():
@@ -60,3 +60,11 @@ def test_checkpoint_resume_keeps_model_identity():
                   archive_verified=True, receipt={'physics_hash': row['physics_hash']}, archive={})
     after = apply_outcome(row, output)
     assert after['segment'] == 1 and after['model'] == before and after['status'] == 'checkpoint'
+
+
+def test_capacity_ramp_accepts_a_license_ceiling_between_planned_stages():
+    manifest = {'capacity_stage': 80, 'license_capacity': 128, 'pilot_designs': [],
+                'designs': [dict(archive_verified=True, quality={'passed': True},
+                                 solver_started_at=1, solver_finished_at=100) for _ in range(128)]}
+    assert ramp_capacity(manifest)['capacity_stage'] == 128
+    assert ramp_capacity(manifest)['capacity_stage'] == 128
