@@ -112,16 +112,24 @@ def prepare(old, workflow_id):
             "execution": plan, "shards": shards, "runs": []}
 
 
-def recover(old, workflow_id):
+def recover(old, workflow_id, *, repair_indices=()):
     """Retry only interrupted/failed shards, retaining results and attempt history."""
     if old.get("cancel_requested") or old["status"] not in TERMINAL or not old.get("shards"):
         raise ValueError("Recovery requires a terminal matrix job without cancellation")
     if digest(old["spec"]) != old["input_hash"]:
         raise ValueError("Requested input digest does not match the catalog")
+    if (not isinstance(repair_indices, (list, tuple)) or
+            any(type(i) is not int or not 0 <= i < len(old['shards']) for i in repair_indices)):
+        raise ValueError('Repair indices must identify existing matrix designs')
+    for index in repair_indices:
+        source = next(s for s in old['shards'] if s['index'] == index)
+        if source['status'] != 'review' or source.get('history_audit', {}).get('passed') is not False:
+            raise ValueError('Reviewed design requires a failed original-history audit before repair')
     shards = []
     for source in old["shards"]:
         shard = deepcopy(source)
-        if shard["status"] not in ("completed", "review") or not shard.get("archive_verified"):
+        if (shard['index'] in repair_indices or
+                shard["status"] not in ("completed", "review") or not shard.get("archive_verified")):
             history = shard.pop("previous_attempts", [])
             history.append(deepcopy(shard))
             shard = {k: shard[k] for k in ("id", "name", "profile", "parent_job_id",

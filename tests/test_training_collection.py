@@ -90,3 +90,21 @@ def test_training_subset_excludes_heavy_fields():
     names = ["run.json", "resolved-input.json", "attempts/001/extracted/impact_history.parquet",
              "attempts/001/raw/job.odb", "attempts/001/extracted/fields/part-001.parquet"]
     assert training_paths({"files": [{"path": base + p} for p in names]}) == [base + p for p in names[:3]]
+
+
+def test_post_publication_history_rejection_excludes_originally_accepted_archive(tmp_path):
+    from honeycomb_studio.training_collection import apply_history_audit
+    store = Store(tmp_path / 'archive')
+    batch = store.create(BatchSpec())
+    run = store.list('runs', batch['id'])[0]
+    run.update(status='completed', quality={'ml_eligible': True}, summary={'SEA_J_kg': 12})
+    store.save('runs', run)
+    original = (Path(run['path']) / 'run.json').read_bytes()
+    runs = collect_runs(store.root)
+    apply_history_audit(runs, {'passed': False, 'issues': [{'gap_count': 1}]})
+    result = build_collection([{'job_id': 'a', 'runs': runs}], tmp_path / 'collection')
+    assert result['samples'] == 0 and result['runs'] == 1
+    assert runs[0]['original_publication_quality']['ml_eligible'] is True
+    assert runs[0]['quality']['ml_eligible'] is False and runs[0]['status'] == 'review'
+    assert (Path(run['path']) / 'run.json').read_bytes() == original
+    store.db.close()
