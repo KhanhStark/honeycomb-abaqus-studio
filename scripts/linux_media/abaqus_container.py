@@ -52,6 +52,8 @@ command = [
     str(cwd),
     "--env",
     "HOME=/home/modelrunner",
+    "--env",
+    "HONEYCOMB_CONTINUATION_DIRECTORY=" + str(cwd),
     "--mount",
     "type=volume,source=honeycomb-install,target=/opt,readonly",
 ]

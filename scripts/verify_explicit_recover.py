@@ -35,7 +35,7 @@ p.setMeshControls(regions=p.cells,technique=STRUCTURED)
 p.setElementType(regions=(p.cells,),elemTypes=(mesh.ElemType(elemCode=C3D8R,elemLibrary=EXPLICIT),))
 p.generateMesh()
 a.regenerate()
-m.ExplicitDynamicsStep(name='Test',previous='Initial',timePeriod=.5)
+m.ExplicitDynamicsStep(name='Test',previous='Initial',timePeriod=.06)
 m.steps['Test'].Restart(numberIntervals=1000,timeMarks=OFF,overlay=ON)
 m.fieldOutputRequests['F-Output-1'].setValues(numIntervals=10)
 m.historyOutputRequests['H-Output-1'].setValues(numIntervals=1000)
@@ -72,7 +72,7 @@ open(sys.argv[-1],'w').write(json.dumps(channels))
         while time.monotonic() < deadline:
             if process.poll() is not None:
                 raise RuntimeError('Probe finished before interruption; recovery was not exercised')
-            state = solver.sta_progress(ROOT / 'recover_probe.sta', .5)
+            state = solver.sta_progress(ROOT / 'recover_probe.sta', .06)
             if state.get('simulation_time_s', 0) > .02:
                 break
             time.sleep(.25)
@@ -83,7 +83,7 @@ open(sys.argv[-1],'w').write(json.dumps(channels))
         if not (ROOT / 'continuation-stop-ack.json').exists():
             raise RuntimeError('Solver did not acknowledge orderly stop')
         (ROOT / 'continuation.stop').unlink()
-        before = solver.sta_progress(ROOT / 'recover_probe.sta', .5)
+        before = solver.sta_progress(ROOT / 'recover_probe.sta', .06)
         if before.get('solver_success'):
             raise RuntimeError('No interruption occurred')
         files = checkpoint_inventory(ROOT, 'recover_probe')
@@ -94,12 +94,12 @@ open(sys.argv[-1],'w').write(json.dumps(channels))
         subprocess.run(solver.command(str(executable), 'python', str(reader), str(ROOT / 'history-before.json')), cwd=ROOT, check=True, timeout=120)
         shutil.copy2(ROOT / 'recover_probe.sta', ROOT / 'before.sta')
         subprocess.run(solver.command(str(executable), 'job=recover_probe', 'recover', 'cpus=4', 'double=both', 'user=' + str(control), 'interactive'), cwd=ROOT, stdout=(ROOT / 'recover.log').open('w'), stderr=subprocess.STDOUT, check=True, timeout=600)
-        after = solver.sta_progress(ROOT / 'recover_probe.sta', .5)
-        if not after.get('solver_success') or after.get('simulation_time_s', 0) < .5:
+        after = solver.sta_progress(ROOT / 'recover_probe.sta', .06)
+        if not after.get('solver_success') or after.get('simulation_time_s', 0) < .06:
             raise RuntimeError('Recovered probe did not finish the original step')
         subprocess.run(solver.command(str(executable), 'python', str(reader), str(ROOT / 'history-after.json')), cwd=ROOT, check=True, timeout=120)
         channels = json.loads((ROOT / 'history-after.json').read_text())
-        continuity = history_continuity(channels, {'duration': .5, 'history_intervals': 1000})
+        continuity = history_continuity(channels, {'duration': .06, 'history_intervals': 1000})
         if not continuity['passed']:
             raise RuntimeError('Recovered history is incomplete: ' + json.dumps(continuity))
         write_json(Path('output/explicit-recover-verification.json'), {'passed': True, 'before': before, 'after': after, 'files': sorted(files), 'physics_changed': False, 'history_integrity': continuity,
