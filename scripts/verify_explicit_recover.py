@@ -1,7 +1,7 @@
 """Licensed one-element stop/recover test. No research rows are published."""
-import subprocess
 import json
 import shutil
+import subprocess
 import time
 from pathlib import Path
 
@@ -9,8 +9,8 @@ from native_cloud_worker import native_runtime
 
 from honeycomb_studio import solver
 from honeycomb_studio.cloud_continuation import checkpoint_inventory, verify_checkpoint
-from honeycomb_studio.store import write_json
 from honeycomb_studio.data import history_continuity
+from honeycomb_studio.store import write_json
 
 ROOT = Path('/tmp/honeycomb-recover-probe')
 BUILD = '''from abaqus import *

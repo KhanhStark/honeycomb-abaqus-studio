@@ -7,8 +7,8 @@ import httpx
 import pytest
 
 from honeycomb_studio.cloud_archive import ReleaseArchive
-from honeycomb_studio.cloud_publication import prepare
 from honeycomb_studio.cloud_github import Github
+from honeycomb_studio.cloud_publication import prepare
 
 
 def test_many_reductions_bundle_losslessly_and_large_files_are_not_copied(tmp_path):
