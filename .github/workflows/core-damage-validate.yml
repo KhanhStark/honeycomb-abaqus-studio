@@ -49,6 +49,7 @@ jobs:
           path: |
             output/*.json
             output/actions-logs/**
+            output/install-probe/*.log
             /tmp/honeycomb-material-validation/**
             /tmp/honeycomb-recover-probe/*.json
             /tmp/honeycomb-recover-probe/*.log
@@ -86,6 +87,7 @@ jobs:
           path: |
             output/*.json
             output/actions-logs/**
+            output/install-probe/*.log
             /tmp/honeycomb-recover-probe/*.json
             /tmp/honeycomb-recover-probe/*.log
             /tmp/honeycomb-recover-probe/*.sta

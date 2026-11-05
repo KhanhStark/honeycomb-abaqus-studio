@@ -101,6 +101,9 @@ def create_checkpoint(executable, control, reader, *, damage=False):
         deadline = time.monotonic() + 180
         while time.monotonic() < deadline:
             if process.poll() is not None:
+                if process.returncode:
+                    raise RuntimeError('Probe solver failed before the checkpoint (exit ' +
+                                       str(process.returncode) + '); inspect first.log')
                 raise RuntimeError('Probe finished before interruption; recovery was not exercised')
             state = solver.sta_progress(ROOT / 'recover_probe.sta', .06)
             if state.get('simulation_time_s', 0) > (.01 if damage else .02):
