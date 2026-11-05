@@ -41,6 +41,7 @@ def test_native_context_restricts_network_and_cleans_private_config(tmp_path, mo
             assert ('link_sl=' in config) is continuation
             if continuation:
                 assert "'g++','-shared'" in config and 'ifort' not in config
+                assert "'%E'" in config  # Abaqus uses this to retain required archive symbols.
             assert os.environ["HONEYCOMB_IMPACT_ROOT"] == str((tmp_path / "results").resolve())
             raise RuntimeError("interrupted")
     assert not (tmp_path / "cloud-private/abaqus_v6.env").exists()

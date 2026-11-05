@@ -46,6 +46,7 @@ j.writeInput(consistencyChecking=ON)
 
 def main():
     ROOT.mkdir()
+    (ROOT / 'abaqus_v6.env').write_text('verbose=ON\n')
     (ROOT / 'build.py').write_text(BUILD)
     control = ROOT / 'continuation_control.c'
     shutil.copy2('scripts/linux_media/continuation_control.c', control)
@@ -62,6 +63,9 @@ odb.close()
 open(sys.argv[-1],'w').write(json.dumps(channels))
 ''')
     with native_runtime(ROOT, continuation=True) as executable:
+        subprocess.run(solver.command(str(executable), 'python', '-c',
+                       "import shutil; shutil.copy('/opt/SIMULIA/EstProducts/2020/linux_a64/SMA/site/lnx86_64.env','compiler-environment.txt')"),
+                       cwd=ROOT, check=True, timeout=120)
         subprocess.run(solver.command(str(executable), 'cae', 'noGUI=' + str(ROOT / 'build.py')), cwd=ROOT, check=True, timeout=120)
         process = solver.launch(str(executable), ['job=recover_probe', 'cpus=4', 'double=both', 'user=' + str(control), 'interactive'], ROOT, ROOT / 'first.log')
         deadline = time.monotonic() + 180
