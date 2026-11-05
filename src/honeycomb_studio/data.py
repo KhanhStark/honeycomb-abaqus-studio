@@ -93,10 +93,35 @@ def consume_spool(directory: Path, field_sink=None) -> int:
     return count
 
 
+def history_continuity(history: list[dict], spec: dict) -> dict:
+    """Check original ODB samples; never certify interpolated recovery gaps."""
+    interval = spec["duration"] / spec["history_intervals"]
+    # Output is recorded at the next solver increment, with small time jitter.
+    tolerance = interval * 1.5
+    issues = []
+    for channel in history:
+        label = {k: channel.get(k) for k in ("step", "region", "variable")}
+        values = np.asarray(channel["data"], dtype=float)
+        if values.ndim != 2 or values.shape[1] != 2 or len(values) < 2 or not np.isfinite(values).all():
+            issues.append({**label, "error": "missing or nonfinite samples"})
+            continue
+        times = values[:, 0]
+        gaps = np.diff(times)
+        nonincreasing = int(np.count_nonzero(gaps <= 0))
+        missing = int(np.count_nonzero(gaps > tolerance))
+        coverage = bool(abs(times[0]) <= tolerance and abs(times[-1] - spec["duration"]) <= tolerance)
+        if nonincreasing or missing or not coverage:
+            issues.append({**label, "gap_count": missing, "max_gap_s": float(gaps.max()),
+                           "nonincreasing_count": nonincreasing, "covers_duration": coverage})
+    return {"passed": bool(history) and not issues, "channels": len(history),
+            "expected_interval_s": interval, "maximum_allowed_gap_s": tolerance, "issues": issues}
+
+
 def history_summary(
     directory: Path, spec: dict, actual: dict | None = None, checkpoint=None
 ) -> tuple[dict, list[dict]]:
     history = json.loads((directory / "histories.json").read_text())
+    integrity = history_continuity(history, spec)
 
     def find(var, region_contains=None, optional=False):
         items = [
@@ -176,6 +201,7 @@ def history_summary(
         )
     summary = {
         "schema_version": "1",
+        "history_integrity": integrity,
         "validation_status": "reconstruction_unvalidated",
         "initial_kinetic_energy_J": k0,
         "peak_raw_contact_force_N": float(f[peak]),
@@ -328,8 +354,16 @@ def history_summary(
         sums = {}
         for t, x in force_checks:
             sums[t] = sums.get(t, 0.0) + x
-        errors = [abs(x - float(np.interp(t, time, f))) for t, x in sums.items()]
-        summary["contact_force_check_max_relative_percent"] = 100 * max(errors) / max(float(f[peak]), 1e-12)
+        # A recovered ODB can span the full duration while missing buffered
+        # history. Interpolation across such gaps is not a physical force check.
+        acceleration_integrity = history_continuity(
+            [h for h in history if h["variable"] == "A3" and "IMPACTOR" in h["region"].upper()], spec
+        )
+        if acceleration_integrity["passed"]:
+            errors = [abs(x - float(np.interp(t, time, f))) for t, x in sums.items()]
+            summary["contact_force_check_max_relative_percent"] = 100 * max(errors) / max(float(f[peak]), 1e-12)
+        else:
+            summary["contact_force_check_max_relative_percent"] = None
     else:
         summary["contact_force_check_max_relative_percent"] = None
     summary["field_extrema"] = extrema
@@ -360,6 +394,8 @@ def history_summary(
 
 def quality(summary: dict) -> dict:
     findings = []
+    if summary.get("history_integrity", {}).get("passed") is False:
+        findings.append("History ODB thiếu mẫu, không liên tục hoặc không phủ đủ thời gian; cần chạy lại dữ liệu gốc")
     if not summary.get("solver_completed"):
         findings.append("Solver chưa đạt thời gian vật lý yêu cầu")
     for key, threshold in (
