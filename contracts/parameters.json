@@ -1,5 +1,85 @@
 [
   {
+    "key": "physics_version",
+    "title": "physics_version",
+    "unit": "",
+    "source": "Numerical choice",
+    "description": "",
+    "default": "legacy-v1",
+    "type": "<class 'str'>",
+    "sweep_allowed": true
+  },
+  {
+    "key": "impactor_shape",
+    "title": "impactor_shape",
+    "unit": "",
+    "source": "Numerical choice",
+    "description": "",
+    "default": "sphere",
+    "type": "typing.Literal['sphere', 'blunt_cone']",
+    "sweep_allowed": true
+  },
+  {
+    "key": "nose_diameter_mm",
+    "title": "nose_diameter_mm",
+    "unit": "",
+    "source": "Numerical choice",
+    "description": "",
+    "default": 20,
+    "type": "<class 'float'>",
+    "sweep_allowed": true
+  },
+  {
+    "key": "shank_diameter_mm",
+    "title": "shank_diameter_mm",
+    "unit": "",
+    "source": "Numerical choice",
+    "description": "",
+    "default": 40,
+    "type": "<class 'float'>",
+    "sweep_allowed": true
+  },
+  {
+    "key": "cone_height_mm",
+    "title": "cone_height_mm",
+    "unit": "",
+    "source": "Numerical choice",
+    "description": "",
+    "default": 10,
+    "type": "<class 'float'>",
+    "sweep_allowed": true
+  },
+  {
+    "key": "shank_height_mm",
+    "title": "shank_height_mm",
+    "unit": "",
+    "source": "Numerical choice",
+    "description": "",
+    "default": 30,
+    "type": "<class 'float'>",
+    "sweep_allowed": true
+  },
+  {
+    "key": "adiabatic",
+    "title": "adiabatic",
+    "unit": "",
+    "source": "Numerical choice",
+    "description": "",
+    "default": false,
+    "type": "<class 'bool'>",
+    "sweep_allowed": true
+  },
+  {
+    "key": "initial_temperature_C",
+    "title": "initial_temperature_C",
+    "unit": "",
+    "source": "Numerical choice",
+    "description": "",
+    "default": 20,
+    "type": "<class 'float'>",
+    "sweep_allowed": true
+  },
+  {
     "key": "core_topology",
     "title": "Cấu trúc lõi",
     "unit": "",
@@ -420,13 +500,23 @@
     "sweep_allowed": false
   },
   {
+    "key": "face_material.johnson_cook",
+    "title": "johnson_cook",
+    "unit": "",
+    "source": "Numerical choice",
+    "description": "",
+    "default": null,
+    "type": "honeycomb_studio.models.JohnsonCook | None",
+    "sweep_allowed": true
+  },
+  {
     "key": "face_material.hardening",
     "title": "hardening",
     "unit": "",
     "source": "Numerical choice",
     "description": "",
     "default": "shifted_ramberg_osgood",
-    "type": "typing.Literal['shifted_ramberg_osgood', 'perfect_plastic', 'bilinear', 'table']",
+    "type": "typing.Literal['shifted_ramberg_osgood', 'perfect_plastic', 'bilinear', 'table', 'johnson_cook']",
     "sweep_allowed": true
   },
   {
@@ -530,13 +620,23 @@
     "sweep_allowed": false
   },
   {
+    "key": "core_material.johnson_cook",
+    "title": "johnson_cook",
+    "unit": "",
+    "source": "Numerical choice",
+    "description": "",
+    "default": null,
+    "type": "honeycomb_studio.models.JohnsonCook | None",
+    "sweep_allowed": true
+  },
+  {
     "key": "core_material.hardening",
     "title": "hardening",
     "unit": "",
     "source": "Numerical choice",
     "description": "",
     "default": "shifted_ramberg_osgood",
-    "type": "typing.Literal['shifted_ramberg_osgood', 'perfect_plastic', 'bilinear', 'table']",
+    "type": "typing.Literal['shifted_ramberg_osgood', 'perfect_plastic', 'bilinear', 'table', 'johnson_cook']",
     "sweep_allowed": true
   },
   {

@@ -21,6 +21,11 @@ mdb.Job(name=jobname,model=m.name,type=ANALYSIS,numCpus=cfg['cpus'],numDomains=c
 out=cfg['output_directory'];os.chdir(out)
 mdb.saveAs(pathName=os.path.join(out,jobname+'.cae'))
 mdb.jobs[jobname].writeInput(consistencyChecking=ON)
+if cfg['core_material'].get('johnson_cook') or cfg['face_material'].get('johnson_cook'):
+    sys.path.insert(0,cfg['adapter_directory'])
+    from damage_keywords import rewrite_input
+    rewrite_input(jobname+'.inp',cfg,{
+        'AA6061-T6-Facesheets':cfg['face_material'],'AA6061-T6-Core':cfg['core_material']})
 actual=json.load(open(cfg['cache_manifest']))
 actual.update(cfg);actual['cache_hit']=True
 with open(os.path.join(out,'model_manifest.json'),'w') as f:json.dump(actual,f,indent=2,sort_keys=True)

@@ -25,6 +25,10 @@ with open('build_progress.txt','w') as f: f.write('Starting reconstruction\n')
 MODEL = 'Honeycomb-Study'
 JOB = P['job_name']
 IS_REENTRANT=P.get('core_topology','hexagonal')=='reentrant_0'
+IS_CONE=P.get('impactor_shape','sphere')=='blunt_cone'
+HAS_DAMAGE=bool(P['core_material'].get('johnson_cook') or P['face_material'].get('johnson_cook'))
+FACE_MATERIAL='AA6061-T6-Facesheets' if P['face_material'].get('johnson_cook') else 'Al1100-H14-Facesheets'
+CORE_MATERIAL='AA6061-T6-Core' if P['core_material'].get('johnson_cook') else 'Al3003-H19-Core'
 if not IS_REENTRANT and P.get('hex_geometry','regular')=='regular':
     P['side']=P['cell_size']/math.sqrt(3.0)
     P['periodic_density_kg_m3']=8.0*P['foil']*P['core_material']['density']/(3.0*P['cell_size'])
@@ -52,7 +56,7 @@ def clipped(a,b):
 Mdb()
 m=mdb.Model(name=MODEL,description=('%s; %%g J; mm-tonne-s-N; see manifest.'%('Assumed reentrant image-1 core; baseline external setup' if IS_REENTRANT else 'Foo2008 reconstruction'))%P['energy_J'])
 if 'Model-1' in mdb.models.keys(): del mdb.models['Model-1']
-for name,props,table in [('Al1100-H14-Facesheets',P['face_material'],P['face_plastic_table']),('Al3003-H19-Core',P['core_material'],P['core_plastic_table'])]:
+for name,props,table in [(FACE_MATERIAL,P['face_material'],P['face_plastic_table']),(CORE_MATERIAL,P['core_material'],P['core_plastic_table'])]:
     mat=m.Material(name=name)
     mat.Density(table=((props['density']*1.e-12,),))
     mat.Elastic(table=((props['young'],props['poisson']),))
@@ -62,12 +66,12 @@ steel_density=2.25e-6*(P['impact_mass']/.00265)*(13.1/P['ball_diameter'])**3
 steel.Density(table=((steel_density,),))
 steel.Elastic(table=((P.get('impactor_young',200000.),P.get('impactor_poisson',.3)),))
 m.HomogeneousSolidSection(name='SteelSolid',material=steel.name)
-for name,mat,t in [('Top-Facesheet-Section','Al1100-H14-Facesheets',P['skin']),
-                   ('Single-Foil-Section','Al3003-H19-Core',P['foil']),
-                   ('Double-Foil-Section','Al3003-H19-Core',2.*P['foil'])]:
+for name,mat,t in [('Top-Facesheet-Section',FACE_MATERIAL,P['skin']),
+                   ('Single-Foil-Section',CORE_MATERIAL,P['foil']),
+                   ('Double-Foil-Section',CORE_MATERIAL,2.*P['foil'])]:
     m.HomogeneousShellSection(name=name,material=mat,thickness=t,
                              integrationRule=SIMPSON,numIntPts=P['shell_points'])
-m.HomogeneousShellSection(name='Bottom-Facesheet-Section',material='Al1100-H14-Facesheets',thickness=P['bottom_skin'],integrationRule=SIMPSON,numIntPts=P['shell_points'])
+m.HomogeneousShellSection(name='Bottom-Facesheet-Section',material=FACE_MATERIAL,thickness=P['bottom_skin'],integrationRule=SIMPSON,numIntPts=P['shell_points'])
 
 # Vertical opposite sides have double foil thickness, consistent with Fig. 7
 # and Eq. 8. Unique shared walls, rather than overlapping duplicated shells.
@@ -186,25 +190,36 @@ skin.Set(name=CLAMP_SET,nodes=skin.nodes.sequenceFromLabels(labels))
 log('SKIN_MESH %d elements %d nodes'%(len(skin.elements),len(skin.nodes)))
 
 R=P['ball_diameter']/2.
-s=m.ConstrainedSketch(name='SphereProfile',sheetSize=40.)
-s.ConstructionLine(point1=(0.,-2.*R),point2=(0.,2.*R))
-s.ArcByCenterEnds(center=(0.,0.),point1=(0.,R),point2=(0.,-R),direction=CLOCKWISE)
-s.Line(point1=(0.,-R),point2=(0.,R))
-ball=m.Part(name='Rigid-Impactor',dimensionality=THREE_D,type=DEFORMABLE_BODY)
-ball.BaseSolidRevolve(sketch=s,angle=360.)
-ball.Set(name='ALL_CELLS',cells=ball.cells)
-ball.SectionAssignment(region=ball.sets['ALL_CELLS'],sectionName='SteelSolid')
-ball.seedPart(size=P['ball_seed'],deviationFactor=.05,minSizeFactor=.1)
-ball.setMeshControls(regions=ball.cells,elemShape=TET,technique=FREE)
-ball.setElementType(regions=(ball.cells,),elemTypes=(mesh.ElemType(elemCode=C3D4,elemLibrary=EXPLICIT),))
-ball.generateMesh()
-ball.Set(name='RIGID_ELEMENTS',elements=ball.elements)
+if IS_CONE:
+    s=m.ConstrainedSketch(name='BluntConeProfile',sheetSize=160.)
+    s.ConstructionLine(point1=(0.,-10.),point2=(0.,80.))
+    points=[(0.,0.),(P['nose_diameter_mm']/2.,0.),
+            (P['shank_diameter_mm']/2.,P['cone_height_mm']),
+            (P['shank_diameter_mm']/2.,P['cone_height_mm']+P['shank_height_mm'])]
+    for left,right in zip(points[:-1],points[1:]): s.Line(point1=left,point2=right)
+    ball=m.Part(name='Rigid-Impactor',dimensionality=THREE_D,type=ANALYTIC_RIGID_SURFACE)
+    ball.AnalyticRigidSurfRevolve(sketch=s)
+    ball.Surface(name='CONTACT',side1Faces=ball.faces)
+else:
+    s=m.ConstrainedSketch(name='SphereProfile',sheetSize=40.)
+    s.ConstructionLine(point1=(0.,-2.*R),point2=(0.,2.*R))
+    s.ArcByCenterEnds(center=(0.,0.),point1=(0.,R),point2=(0.,-R),direction=CLOCKWISE)
+    s.Line(point1=(0.,-R),point2=(0.,R))
+    ball=m.Part(name='Rigid-Impactor',dimensionality=THREE_D,type=DEFORMABLE_BODY)
+    ball.BaseSolidRevolve(sketch=s,angle=360.)
+    ball.Set(name='ALL_CELLS',cells=ball.cells)
+    ball.SectionAssignment(region=ball.sets['ALL_CELLS'],sectionName='SteelSolid')
+    ball.seedPart(size=P['ball_seed'],deviationFactor=.05,minSizeFactor=.1)
+    ball.setMeshControls(regions=ball.cells,elemShape=TET,technique=FREE)
+    ball.setElementType(regions=(ball.cells,),elemTypes=(mesh.ElemType(elemCode=C3D4,elemLibrary=EXPLICIT),))
+    ball.generateMesh()
+    ball.Set(name='RIGID_ELEMENTS',elements=ball.elements)
 rp=ball.ReferencePoint(point=(0.,0.,0.))
 ball.Set(name='RP',referencePoints=(ball.referencePoints[rp.id],))
 # Correct the faceted tetrahedral sphere mass without changing the published
 # effective density. The additional point mass is explicitly documented.
 volume=0.
-for e in ball.elements:
+for e in ([] if IS_CONE else ball.elements):
     ns=[ball.nodes[i].coordinates for i in e.connectivity]
     a=[ns[1][i]-ns[0][i] for i in range(3)]
     c=[ns[2][i]-ns[0][i] for i in range(3)]
@@ -226,23 +241,29 @@ bottom.SectionAssignment(region=bottom.sets['ALL'],sectionName='Bottom-Facesheet
 a.Instance(name='Bottom-1',part=bottom,dependent=ON)
 a.Instance(name='Top-1',part=skin,dependent=ON)
 a.Instance(name='Impactor-1',part=ball,dependent=ON)
+if IS_CONE:
+    a.rotate(instanceList=('Impactor-1',),axisPoint=(0.,0.,0.),axisDirection=(1.,0.,0.),angle=90.)
 a.translate(instanceList=('Bottom-1',),vector=(0.,0.,-P['bottom_skin']/2.))
 a.translate(instanceList=('Top-1',),vector=(0.,0.,P['core_height']+P['skin']/2.))
-a.translate(instanceList=('Impactor-1',),vector=(P['impact_x'],P['impact_y'],P['core_height']+P['skin']+P['gap']+R))
+a.translate(instanceList=('Impactor-1',),vector=(P['impact_x'],P['impact_y'],P['core_height']+P['skin']+P['gap']+(0. if IS_CONE else R)))
 for face,edge,instance,masterface in [('Top','TOP_BOND','Top-1','NEGATIVE_Z'),('Bottom','BOTTOM_BOND','Bottom-1','POSITIVE_Z')]:
     m.Tie(name=face+'-PerfectBond',master=a.instances[instance].surfaces[masterface],
           slave=a.instances['Core-1'].surfaces[edge],positionToleranceMethod=SPECIFIED,
           positionTolerance=P['tie_tolerance'],adjust=ON,tieRotations=ON,thickness=ON)
-m.RigidBody(name='Impactor-RigidBody',refPointRegion=a.instances['Impactor-1'].sets['RP'],
-            bodyRegion=a.instances['Impactor-1'].sets['RIGID_ELEMENTS'])
+if IS_CONE:
+    m.RigidBody(name='Impactor-RigidBody',refPointRegion=a.instances['Impactor-1'].sets['RP'],surfaceRegion=a.instances['Impactor-1'].surfaces['CONTACT'])
+else:
+    m.RigidBody(name='Impactor-RigidBody',refPointRegion=a.instances['Impactor-1'].sets['RP'],bodyRegion=a.instances['Impactor-1'].sets['RIGID_ELEMENTS'])
 for name in ['Bottom-1','Top-1']:
     m.EncastreBC(name='Clamp-'+name,createStepName='Initial',region=a.instances[name].sets[CLAMP_SET])
 m.DisplacementBC(name='Guided-Z-Impactor',createStepName='Initial',region=a.instances['Impactor-1'].sets['RP'],u1=0.,u2=0.,u3=UNSET,ur1=0.,ur2=0.,ur3=0.)
 m.ExplicitDynamicsStep(name='Impact',previous='Initial',timePeriod=P['duration'],nlgeom=ON,linearBulkViscosity=P['bulk_linear'],quadBulkViscosity=P['bulk_quadratic'])
 m.Velocity(name='Initial-Impact-Velocity',region=a.instances['Impactor-1'].sets['RP'],velocity3=-P['velocity'])
-m.Gravity(name='Gravity-Impactor',createStepName='Impact',comp3=-P['gravity']*1000.,region=a.instances['Impactor-1'].sets['RIGID_ELEMENTS'])
+if P['gravity'] and not IS_CONE:
+    m.Gravity(name='Gravity-Impactor',createStepName='Impact',comp3=-P['gravity']*1000.,region=a.instances['Impactor-1'].sets['RIGID_ELEMENTS'])
 # The point mass correction receives the same gravitational acceleration.
-m.ConcentratedForce(name='Gravity-MassCorrection',createStepName='Impact',region=a.instances['Impactor-1'].sets['RP'],cf3=-P['gravity']*1000.*P['impactor_correction_mass_tonne'])
+if P['gravity']:
+    m.ConcentratedForce(name='Gravity-MassCorrection',createStepName='Impact',region=a.instances['Impactor-1'].sets['RP'],cf3=-P['gravity']*1000.*P['impactor_correction_mass_tonne'])
 cp=m.ContactProperty('Frictionless-HardContact')
 cp.NormalBehavior(pressureOverclosure=HARD,allowSeparation=ON,constraintEnforcementMethod=DEFAULT)
 if P['friction']:
@@ -259,13 +280,19 @@ if IS_REENTRANT:
     exclusions.extend(((a.instances['Core-1'].surfaces['TOP_BOND_CONTACT_EXCLUSION'],a.instances['Top-1'].surfaces['BOTH_SIDES']),
                        (a.instances['Core-1'].surfaces['BOTTOM_BOND_CONTACT_EXCLUSION'],a.instances['Bottom-1'].surfaces['BOTH_SIDES'])))
 if exclusions: gc.excludedPairs.setValuesInStep(stepName='Initial',addPairs=tuple(exclusions))
-nodal=[v for v in P['field_variables'] if v not in ('S','PE','PEEQ','LE')]
+ELEMENT_FIELDS=('S','PE','PEEQ','LE','STATUS','SDEG','DMICRT','JCCRT','TEMP')
+nodal=[v for v in P['field_variables'] if v not in ELEMENT_FIELDS]
 m.fieldOutputRequests['F-Output-1'].setValues(variables=tuple(nodal),numIntervals=P['field_intervals'])
 a.Set(name='SANDWICH_ELEMENTS',elements=(a.instances['Core-1'].elements,a.instances['Top-1'].elements,a.instances['Bottom-1'].elements))
-stress=[v for v in P['field_variables'] if v in ('S','PE','PEEQ','LE')]
+a.Set(name='SANDWICH_NODES',nodes=(a.instances['Core-1'].nodes,a.instances['Top-1'].nodes,a.instances['Bottom-1'].nodes))
+stress=[v for v in P['field_variables'] if v in ELEMENT_FIELDS]
 if stress:
     m.FieldOutputRequest(name='Sandwich-Stress-PlasticStrain',createStepName='Impact',variables=tuple(stress),region=a.sets['SANDWICH_ELEMENTS'],numIntervals=P['field_intervals'])
 m.historyOutputRequests['H-Output-1'].setValues(variables=tuple(P['history_variables']),numIntervals=P['history_intervals'])
+if HAS_DAMAGE:
+    for instance,group in [('Core-1','CORE'),('Top-1','FRONT'),('Bottom-1','REAR')]:
+        a.Set(name=group+'_ENERGY',elements=a.instances[instance].elements)
+        m.HistoryOutputRequest(name=group+'-Energy',createStepName='Impact',variables=('ALLPD','ALLDMD','ALLSE','ALLAE','ALLIE'),region=a.sets[group+'_ENERGY'],numIntervals=P['history_intervals'])
 m.HistoryOutputRequest(name='Impactor-History',createStepName='Impact',variables=('U3','V3','A3','RF3'),region=a.instances['Impactor-1'].sets['RP'],numIntervals=P['history_intervals'])
 P['measurement_nodes']={}
 for face in ['Top-1','Bottom-1']:
@@ -296,9 +323,13 @@ for i,block in enumerate(m.keywordBlock.sieBlocks):
         break
 P['contact_thickness_control']='NOPERIMSELF; skin self-contact '+('enabled' if P['skin_self_contact'] else 'excluded')
 P['impactor_effective_density_tonne_mm3']=steel_density
-P['actual_mesh_gap_mm']=min(n.coordinates[2] for n in a.instances['Impactor-1'].nodes)-(P['core_height']+P['skin'])
+P['actual_mesh_gap_mm']=P['gap'] if IS_CONE else min(n.coordinates[2] for n in a.instances['Impactor-1'].nodes)-(P['core_height']+P['skin'])
 mdb.saveAs(pathName=os.path.join(OUT,JOB+'.cae'))
 mdb.jobs[JOB].writeInput(consistencyChecking=ON)
+if HAS_DAMAGE:
+    sys.path.insert(0,P['adapter_directory'])
+    from damage_keywords import rewrite_input
+    rewrite_input(JOB+'.inp',P,{FACE_MATERIAL:P['face_material'],CORE_MATERIAL:P['core_material']})
 P['elements']={'core':len(core.elements),'facesheet_each':len(skin.elements),'impactor':len(ball.elements)}
 P['walls']={'single':len(single),'double':len(double),'total':len(walls)}
 P['core_cut_density_kg_m3']=sum([f.getSize(printResults=False)*(2.*P['foil'] if f.index in double else P['foil']) for f in core.faces])*P['core_material']['density']/(P['panel']**2*P['core_height'])

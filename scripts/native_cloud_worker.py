@@ -33,7 +33,7 @@ def native_runtime(root):
     root = root.resolve()
     root.mkdir(parents=True, exist_ok=True)
     private = Path(os.environ["RUNNER_TEMP"]) / "cloud-private"
-    private.mkdir(mode=0o700)
+    private.mkdir(mode=0o700, exist_ok=True)
     config = private / "abaqus_v6.env"
     config.write_text("license_server_type=FLEXNET\nabaquslm_license_file="
                       + repr(os.environ["ABAQUS_LICENSE_ENDPOINT"])

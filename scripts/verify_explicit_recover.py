@@ -1,4 +1,5 @@
 """Licensed one-element stop/recover test. No research rows are published."""
+import argparse
 import json
 import shutil
 import subprocess
@@ -45,8 +46,12 @@ j.writeInput(consistencyChecking=ON)
 
 
 def main():
-    ROOT.mkdir()
-    (ROOT / 'build.py').write_text(BUILD)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--stage', choices=('all', 'create', 'restore'), default='all')
+    args = parser.parse_args()
+    if args.stage != 'restore':
+        ROOT.mkdir()
+        (ROOT / 'build.py').write_text(BUILD)
     control = ROOT / 'continuation_control.o'
     subprocess.run(['cc', '-O2', '-fPIC', '-c', 'scripts/linux_media/continuation_control.c', '-o', str(control)], check=True)
     reader = ROOT / 'read_history.py'
@@ -62,6 +67,14 @@ odb.close()
 open(sys.argv[-1],'w').write(json.dumps(channels))
 ''')
     with native_runtime(ROOT) as executable:
+        if args.stage != 'restore':
+            create_checkpoint(executable, control, reader)
+        if args.stage == 'create':
+            return
+        complete_checkpoint(executable, control, reader, cross_runner=args.stage == 'restore')
+
+
+def create_checkpoint(executable, control, reader):
         subprocess.run(solver.command(str(executable), 'cae', 'noGUI=' + str(ROOT / 'build.py')), cwd=ROOT, check=True, timeout=120)
         process = solver.launch(str(executable), ['job=recover_probe', 'cpus=4', 'double=both', 'user=' + str(control), 'interactive'], ROOT, ROOT / 'first.log')
         deadline = time.monotonic() + 180
@@ -89,6 +102,13 @@ open(sys.argv[-1],'w').write(json.dumps(channels))
             p.unlink()
         subprocess.run(solver.command(str(executable), 'python', str(reader), str(ROOT / 'history-before.json')), cwd=ROOT, check=True, timeout=120)
         shutil.copy2(ROOT / 'recover_probe.sta', ROOT / 'before.sta')
+        write_json(ROOT / 'checkpoint-receipt.json', {**receipt, 'before': before})
+
+
+def complete_checkpoint(executable, control, reader, *, cross_runner=False):
+        receipt = json.loads((ROOT / 'checkpoint-receipt.json').read_text())
+        verify_checkpoint(ROOT, receipt, job_name='recover_probe', input_hash='probe', runtime_hash='probe', cpus=4)
+        files, before = receipt['files'], receipt['before']
         subprocess.run(solver.command(str(executable), 'job=recover_probe', 'recover', 'cpus=4', 'double=both', 'user=' + str(control), 'interactive'), cwd=ROOT, stdout=(ROOT / 'recover.log').open('w'), stderr=subprocess.STDOUT, check=True, timeout=600)
         after = solver.sta_progress(ROOT / 'recover_probe.sta', .5)
         if not after.get('solver_success') or after.get('simulation_time_s', 0) < .5:
@@ -98,7 +118,13 @@ open(sys.argv[-1],'w').write(json.dumps(channels))
         continuity = history_continuity(channels, {'duration': .5, 'history_intervals': 1000})
         if not continuity['passed']:
             raise RuntimeError('Recovered history is incomplete: ' + json.dumps(continuity))
-        write_json(Path('output/explicit-recover-verification.json'), {'passed': True, 'before': before, 'after': after, 'files': sorted(files), 'physics_changed': False, 'history_integrity': continuity,
+        original = json.loads((ROOT / 'history-before.json').read_text())
+        final = {(r['step'], r['region'], r['variable']): r['data'] for r in channels}
+        for row in original:
+            values = final.get((row['step'], row['region'], row['variable']), [])
+            if values[:len(row['data'])] != row['data']:
+                raise RuntimeError('Recovery changed the existing history prefix')
+        write_json(Path('output/explicit-recover-verification.json'), {'passed': True, 'cross_runner': cross_runner, 'before': before, 'after': after, 'files': sorted(files), 'physics_changed': False, 'history_integrity': continuity,
                    'stop': json.loads((ROOT / 'continuation-stop-ack.json').read_text())})
 
 

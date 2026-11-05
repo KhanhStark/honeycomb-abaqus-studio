@@ -6,6 +6,7 @@ import { actionRunUrl } from "./action-links";
 import ResultBoundary from "./ResultBoundary";
 import JobDataFolder from "./JobDataFolder";
 import JobExecution from "./JobExecution";
+import CampaignStatus from "./CampaignStatus";
 import { stateLabel } from "./job-state";
 import {
     Box,
@@ -143,6 +144,7 @@ const choices: Record<string, [string, string][]> = {
 const tabs = [
     ["model", "Thiết lập", SlidersHorizontal],
     ["jobs", "Công việc", ListChecks],
+    ["campaign", "Chiến dịch lõi", ListChecks],
     ["data", "Dữ liệu", Database],
     ["setup", "Kết nối", Link2],
 ] as const;
@@ -470,6 +472,8 @@ export default function App() {
                                     ? "Dựng lõi, kiểm tra thông số và chuẩn bị bài va chạm."
                                     : tab === "jobs"
                                       ? "Theo dõi từng lần chạy và giữ lại nguồn gốc dữ liệu."
+                                      : tab === "campaign"
+                                        ? "Theo dõi pilot, kiểm tra số và bộ dữ liệu tối ưu lõi."
                                       : tab === "data"
                                         ? "Đọc kết quả thật, kiểm tra phạm vi và tải dữ liệu."
                                         : "Kết nối dịch vụ và kiểm tra điều kiện chạy Linux."}
@@ -507,6 +511,7 @@ export default function App() {
                             <button onClick={() => setError("")}>Đóng</button>
                         </div>
                     )}
+                    {tab === "campaign" && <CampaignStatus />}
                     {tab === "model" && (
                         <div className="workbench">
                             <section className="sheet">

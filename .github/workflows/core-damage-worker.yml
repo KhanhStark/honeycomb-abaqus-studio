@@ -1,0 +1,67 @@
+name: Core damage · one design per job
+run-name: core-damage · ${{ inputs.ticket }}
+on:
+  workflow_dispatch:
+    inputs:
+      campaign_id:
+        required: true
+        type: string
+      ticket:
+        required: true
+        type: string
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: write
+  checks: write
+  id-token: write
+concurrency:
+  group: core-damage-ticket-${{ inputs.ticket }}
+  cancel-in-progress: false
+jobs:
+  solver:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 330
+    env:
+      ABAQUS_MEDIA_DRIVE_FILE_ID: ${{ vars.ABAQUS_MEDIA_DRIVE_FILE_ID }}
+      ABAQUS_LICENSE_ENDPOINT: ${{ secrets.ABAQUS_LICENSE_ENDPOINT }}
+      ABAQUS_VENDOR_PORT: ${{ secrets.ABAQUS_VENDOR_PORT }}
+      CAMPAIGN_ID: ${{ inputs.campaign_id }}
+      TICKET: ${{ inputs.ticket }}
+      GITHUB_TOKEN: ${{ github.token }}
+      HONEYCOMB_ACTIONS_LOG: '1'
+    steps:
+      - run: echo "HONEYCOMB_WORKFLOW_STARTED_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+      - run: uv sync --locked --extra cloud --extra campaign
+      - name: Atomically claim one execution ticket before preparation
+        run: uv run --locked --extra cloud python scripts/campaign_worker.py claim --campaign-id "$CAMPAIGN_ID" --ticket "$TICKET"
+      - uses: ./.github/actions/abaqus-runtime
+        with:
+          tailscale_id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          drive_credentials: ${{ secrets.HONEYCOMB_DRIVE_CREDENTIALS_JSON }}
+      - name: Solve or restore the exact predecessor state
+        run: uv run --locked --extra cloud python scripts/campaign_worker.py run --campaign-id "$CAMPAIGN_ID" --ticket "$TICKET"
+      - uses: actions/upload-artifact@v7.0.2
+        if: failure() || cancelled()
+        with:
+          name: core-damage-${{ inputs.ticket }}
+          retention-days: 30
+          compression-level: 0
+          if-no-files-found: ignore
+          include-hidden-files: true
+          path: |
+            /tmp/honeycomb-results/**
+            !/tmp/honeycomb-results/**/credentials/**
+            !/tmp/honeycomb-results/**/session.json
+            !/tmp/honeycomb-results/**/engine-settings.json
+      - name: Record preparation failure separately from solver failure
+        if: failure() || cancelled()
+        run: uv run --locked --extra cloud python scripts/campaign_worker.py failure --campaign-id "$CAMPAIGN_ID" --ticket "$TICKET"

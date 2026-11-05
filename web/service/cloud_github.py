@@ -12,7 +12,22 @@ from typing import Any
 
 import httpx
 
-REPOSITORY = "xuankhanh24/honeycomb-abaqus-studio"
+DEFAULT_REPOSITORY = "xuankhanh24/honeycomb-abaqus-studio"
+
+
+def configured_repository(environment=None):
+    """Keep worker catalogs and release URLs in their executing repository."""
+    environment = os.environ if environment is None else environment
+    value = (environment.get("HONEYCOMB_GITHUB_REPOSITORY")
+             or environment.get("GITHUB_REPOSITORY") or DEFAULT_REPOSITORY)
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_.-]{1,100}", value):
+        raise ValueError("Invalid GitHub repository; expected owner/name")
+    if value.split("/")[1] in (".", ".."):
+        raise ValueError("Invalid GitHub repository name")
+    return value
+
+
+REPOSITORY = configured_repository()
 JOB_ID = re.compile(r"^[a-f0-9]{32}$")
 
 
@@ -69,10 +84,12 @@ def raise_github_error(response: httpx.Response):
 
 
 class Github:
-    def __init__(self, token: str | None = None, client=None):
+    def __init__(self, token: str | None = None, client=None, *, repository: str | None = None):
         self.token = token
         self.client = client or httpx.Client(timeout=30, follow_redirects=True)
         self.expiry = 0.0
+        self.refresh_token = None
+        self.repository = configured_repository({"GITHUB_REPOSITORY": repository}) if repository else REPOSITORY
 
     @property
     def configured(self) -> bool:
@@ -90,6 +107,10 @@ class Github:
 
     def access_token(self) -> str | None:
         if self.token and (not self.expiry or time.time() < self.expiry):
+            return self.token
+        if self.refresh_token:
+            refreshed = self.refresh_token()
+            self.token, self.expiry = refreshed.token, refreshed.expiry
             return self.token
         if not self.configured:
             return None
@@ -132,7 +153,45 @@ class Github:
         return response.json() if response.content else None
 
     def repo(self, method: str, path: str, body=None, **kwargs):
-        return self.request(method, f"/repos/{REPOSITORY}" + path, body, **kwargs)
+        return self.request(method, f"/repos/{self.repository}" + path, body, **kwargs)
+
+
+class CampaignApp:
+    """Issue repository-scoped installation tokens; the private key stays in the controller."""
+
+    def __init__(self, app_id=None, private_key=None, client=None):
+        self.app_id = app_id or os.environ["CAMPAIGN_APP_ID"]
+        self.private_key = private_key or os.environ["CAMPAIGN_APP_PRIVATE_KEY"]
+        self.client = client or httpx.Client(timeout=30, follow_redirects=True)
+        self.clients = {}
+
+    def repository(self, repository):
+        from .campaign import OWNERS
+
+        if repository not in {owner + "/honeycomb-abaqus-studio" for owner in OWNERS}:
+            raise ValueError("Repository is outside the approved campaign")
+        cached = self.clients.get(repository)
+        if cached and cached.expiry > time.time() + 120:
+            return cached
+        import jwt
+
+        now = int(time.time())
+        signed = jwt.encode({"iat": now - 60, "exp": now + 540, "iss": self.app_id},
+                            self.private_key, algorithm="RS256")
+        headers = {"Authorization": "Bearer " + signed, "Accept": "application/vnd.github+json"}
+        installation = self.client.get("https://api.github.com/repos/" + repository + "/installation",
+                                       headers=headers)
+        raise_github_error(installation)
+        response = self.client.post(
+            f"https://api.github.com/app/installations/{installation.json()['id']}/access_tokens",
+            headers=headers, json={"repositories": [repository.split('/')[1]],
+                                  "permissions": {"actions": "write", "contents": "write"}})
+        raise_github_error(response)
+        result = Github(response.json()["token"], self.client, repository=repository)
+        result.expiry = time.time() + 3000
+        result.refresh_token = lambda: self.repository(repository)
+        self.clients[repository] = result
+        return result
 
 
 class Catalog:

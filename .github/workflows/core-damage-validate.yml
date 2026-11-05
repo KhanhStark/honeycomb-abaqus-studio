@@ -1,0 +1,91 @@
+name: Core damage · material and recovery validation
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact campaign source SHA
+        required: true
+        type: string
+permissions:
+  contents: write
+  id-token: write
+concurrency:
+  group: core-damage-material-validation
+  cancel-in-progress: false
+jobs:
+  validate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      ABAQUS_MEDIA_DRIVE_FILE_ID: ${{ vars.ABAQUS_MEDIA_DRIVE_FILE_ID }}
+      ABAQUS_LICENSE_ENDPOINT: ${{ secrets.ABAQUS_LICENSE_ENDPOINT }}
+      ABAQUS_VENDOR_PORT: ${{ secrets.ABAQUS_VENDOR_PORT }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+      - run: uv sync --locked --extra cloud --extra campaign
+      - uses: ./.github/actions/abaqus-runtime
+        with:
+          tailscale_id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          drive_credentials: ${{ secrets.HONEYCOMB_DRIVE_CREDENTIALS_JSON }}
+      - name: Verify JC initiation, softening, deletion and thermal units
+        run: uv run --locked --extra cloud python scripts/campaign_validate.py
+      - name: Save orderly Explicit checkpoint for another runner
+        run: uv run --locked --extra cloud python scripts/verify_explicit_recover.py --stage create
+      - name: Publish checksummed checkpoint without rerunning the solver
+        run: uv run --locked --extra cloud python scripts/campaign_evidence.py publish-checkpoint
+      - run: uv run --locked --extra cloud python scripts/campaign_evidence.py infrastructure
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: core-damage-validation-${{ github.run_id }}
+          retention-days: 30
+          path: |
+            output/*.json
+            output/actions-logs/**
+            /tmp/honeycomb-material-validation/**
+            /tmp/honeycomb-recover-probe/*.json
+            /tmp/honeycomb-recover-probe/*.log
+            /tmp/honeycomb-recover-probe/*.sta
+  restore:
+    needs: validate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      ABAQUS_MEDIA_DRIVE_FILE_ID: ${{ vars.ABAQUS_MEDIA_DRIVE_FILE_ID }}
+      ABAQUS_LICENSE_ENDPOINT: ${{ secrets.ABAQUS_LICENSE_ENDPOINT }}
+      ABAQUS_VENDOR_PORT: ${{ secrets.ABAQUS_VENDOR_PORT }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+      - run: uv sync --locked --extra cloud --extra campaign
+      - uses: ./.github/actions/abaqus-runtime
+        with:
+          tailscale_id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          drive_credentials: ${{ secrets.HONEYCOMB_DRIVE_CREDENTIALS_JSON }}
+      - run: uv run --locked --extra cloud python scripts/campaign_evidence.py restore
+      - run: uv run --locked --extra cloud python scripts/verify_explicit_recover.py --stage restore
+      - run: uv run --locked --extra cloud python scripts/campaign_evidence.py publish-validation
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: core-damage-restore-${{ github.run_id }}
+          retention-days: 30
+          path: |
+            output/*.json
+            output/actions-logs/**
+            /tmp/honeycomb-recover-probe/*.json
+            /tmp/honeycomb-recover-probe/*.log
+            /tmp/honeycomb-recover-probe/*.sta

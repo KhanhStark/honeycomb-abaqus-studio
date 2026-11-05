@@ -1,0 +1,27 @@
+name: Core damage · durable campaign controller
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: core-damage-controller
+  cancel-in-progress: false
+jobs:
+  tick:
+    if: github.repository == 'xuankhanh24/honeycomb-abaqus-studio' && vars.CORE_DAMAGE_CONTROLLER_ENABLED == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ vars.CORE_DAMAGE_SOURCE_SHA }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+      - run: uv sync --locked --extra cloud --extra campaign
+      - name: Reconcile independent jobs and fill available owner slots
+        env:
+          CAMPAIGN_APP_ID: ${{ vars.CAMPAIGN_APP_ID }}
+          CAMPAIGN_APP_PRIVATE_KEY: ${{ secrets.CAMPAIGN_APP_PRIVATE_KEY }}
+        run: uv run --locked --extra cloud --extra campaign python scripts/campaign_controller.py tick

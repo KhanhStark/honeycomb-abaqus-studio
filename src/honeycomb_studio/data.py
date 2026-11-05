@@ -133,6 +133,8 @@ def history_summary(
             if optional:
                 return None
             raise ValueError("ODB thiếu history bắt buộc: " + var + " / " + str(region_contains))
+        if not region_contains and len(items) > 1:
+            items = [h for h in items if h["region"].upper() in ("ASSEMBLY", "ASSEMBLY ASSEMBLY", "WHOLE MODEL")]
         if len(items) != 1:
             raise ValueError("History không duy nhất; không tự đoán region cho " + var)
         return np.asarray(items[0]["data"], dtype=float)
@@ -234,6 +236,29 @@ def history_summary(
         "force_method": "m_tonne*(A3_mm_s2+gravity_mm_s2); +Z contact on guided rigid impactor",
         "missing_optional_outputs": [k for k, val in extra.items() if val is None],
     }
+    damage_path = directory / "damage-summary.json"
+    part_energies = {}
+    if spec["core_material"].get("johnson_cook"):
+        if not damage_path.exists():
+            raise ValueError("Damage campaign requires rear-face STATUS/connectivity audit")
+        summary.update(json.loads(damage_path.read_text()))
+        for group in ("CORE", "FRONT", "REAR"):
+            for variable in ("ALLPD", "ALLDMD", "ALLSE", "ALLAE", "ALLIE"):
+                part_energies[group + "_" + variable] = sample(find(variable, group + "_ENERGY")) / 1000
+        core_mass = (actual or {}).get("core_mass_kg")
+        if not core_mass or core_mass <= 0:
+            raise ValueError("Missing initial core mass")
+        core_dissipation = part_energies["CORE_ALLPD"] + part_energies["CORE_ALLDMD"]
+        tail = time >= max(0, time[-1] - .0005)
+        force_limit = max(1., .01 * float(f[peak]))
+        stable_energy = float(np.ptp(core_dissipation[tail])) <= .01 * max(float(core_dissipation[-1]), 1.e-6)
+        summary.update(physics_version=spec["physics_version"], expected_energy_J=spec["energy_J"],
+                       core_mass_kg=core_mass, core_dissipation_J=float(core_dissipation[-1]),
+                       SEA_core_J_kg=float(core_dissipation[-1]) / core_mass,
+                       history_integrity_passed=integrity["passed"],
+                       event_finished=bool(np.max(np.abs(f[tail])) <= force_limit and stable_energy),
+                       velocity_m_s=spec["velocity_m_s"], foil=spec["foil"],
+                       validation_status="AA6061-T6-reference-unvalidated")
     rows = []
     for i, t in enumerate(time):
         row = {
@@ -247,6 +272,7 @@ def history_summary(
             "bottom_U3_mm": float(bottom[i]),
         }
         row.update({k + "_J": float(a[i]) for k, a in energies.items()})
+        row.update({k + "_J": float(a[i]) for k, a in part_energies.items()})
         rows.append({k: None if isinstance(x, float) and not math.isfinite(x) else x for k, x in row.items()})
     write_rows(directory / "impact_history.csv", rows)
     pq.write_table(pa.Table.from_pylist(rows), directory / "impact_history.parquet", compression="zstd")
@@ -295,9 +321,9 @@ def history_summary(
             index = next((i for i, n in enumerate(meta["instances"]) if "IMPACTOR" in n.upper()), None)
             if index is not None:
                 total = sum(
-                    x[2]
+                    -x[2] if spec.get("impactor_shape") == "blunt_cone" else x[2]
                     for idx, x in zip(tb["instance_index"].to_pylist(), tb["data"].to_pylist(), strict=False)
-                    if idx == index
+                    if (idx != index if spec.get("impactor_shape") == "blunt_cone" else idx == index)
                 )
                 force_checks.append((meta["time_s"], total))
         if field in ("PEEQ", "S", "U"):
@@ -387,12 +413,21 @@ def history_summary(
             "PEEQ": "1",
         }.get(field.split()[0], "ODB-native")
     summary["field_statistics"] = field_stats
+    if spec["core_material"].get("johnson_cook"):
+        from .campaign import numerical_gate
+        summary["campaign_quality"] = numerical_gate(summary)
     write_json(directory / "field-statistics.json", field_stats)
     write_json(directory / "summary.json", summary)
     return summary, rows
 
 
 def quality(summary: dict) -> dict:
+    if "campaign_quality" in summary:
+        gate = summary["campaign_quality"]
+        return {"solver_completed": summary["solver_completed"],
+                "numerical_quality": "passed" if gate["passed"] else "review",
+                "physical_validation": "not_established", "findings": gate["errors"],
+                "ml_eligible": gate["passed"] and gate["rear_intact"] and summary.get("event_finished", False)}
     findings = []
     if summary.get("history_integrity", {}).get("passed") is False:
         findings.append("History ODB thiếu mẫu, không liên tục hoặc không phủ đủ thời gian; cần chạy lại dữ liệu gốc")

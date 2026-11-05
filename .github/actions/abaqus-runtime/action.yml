@@ -1,0 +1,32 @@
+name: Pinned licensed Abaqus runtime
+description: Connect the private license endpoint, verify installation media and install the isolated runtime.
+inputs:
+  tailscale_id:
+    required: true
+    description: Repository-scoped Tailscale OIDC identity
+  audience:
+    required: true
+    description: Tailscale token audience
+  drive_credentials:
+    required: true
+    description: Drive credentials for installation media
+runs:
+  using: composite
+  steps:
+    - uses: tailscale/github-action@v4
+      with:
+        oauth-client-id: ${{ inputs.tailscale_id }}
+        audience: ${{ inputs.audience }}
+        tags: tag:honeycomb-runner
+    - shell: bash
+      run: uv run --locked --extra cloud python scripts/check_license_network.py
+    - shell: bash
+      run: |
+        python3 scripts/actions_step.py --title "Cài công cụ giải nén" --details output/actions-logs/packages.log -- bash -c 'sudo apt-get update -qq && sudo apt-get install -y unrar p7zip-full'
+        python3 scripts/actions_step.py --title "Dựng môi trường Linux" --details output/actions-logs/image.log -- docker build --build-arg MODEL_UID=$(id -u) -t honeycomb-install-probe scripts/linux_media
+    - shell: bash
+      env:
+        HONEYCOMB_DRIVE_CREDENTIALS_JSON: ${{ inputs.drive_credentials }}
+      run: uv run --locked python scripts/actions_step.py --title "Tải bộ cài đã khóa SHA-256" --details output/actions-logs/download.log -- uv run --locked python scripts/prepare_linux_media.py
+    - shell: bash
+      run: python3 scripts/actions_step.py --title "Kiểm tra SHA-256 và cài Abaqus" --details output/actions-logs/install.log -- bash scripts/linux_media/install_runtime.sh

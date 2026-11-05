@@ -115,6 +115,10 @@ def run(config):
         os.makedirs(spool)
     odb = openOdb(path=str(config["odb"]), readOnly=True)
     try:
+        damage_metrics = None
+        if config.get('damage_metrics'):
+            from damage_metrics import RearMetrics
+            damage_metrics = RearMetrics(odb)
         sequence = 0
         instances = list(odb.rootAssembly.instances.keys())
         instance_lookup = dict((name, i) for i, name in enumerate(instances))
@@ -215,6 +219,8 @@ def run(config):
                         }
                     )
             for frame_index, frame in enumerate(step.frames):
+                if damage_metrics is not None:
+                    damage_metrics.frame(frame, step.totalTime + frame.frameValue)
                 if config.get("frame_indices") is not None and frame_index not in config["frame_indices"]:
                     continue
                 for field_name, field in frame.fieldOutputs.items():
@@ -318,6 +324,9 @@ def run(config):
                         "chunks": sequence,
                     },
                 )
+        if damage_metrics is not None:
+            dump(os.path.join(out, 'damage-summary.json'), damage_metrics.summary())
+            dump(os.path.join(out, 'rear-field-history.json'), damage_metrics.rows)
         dump(os.path.join(out, "histories.json"), histories)
         inventory["chunks"] = sequence
         dump(os.path.join(out, "inventory.json"), inventory)

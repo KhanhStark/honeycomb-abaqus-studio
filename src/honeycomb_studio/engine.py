@@ -53,6 +53,8 @@ class Engine:
         self.fake = fake
         self.shutdown = threading.Event()
         self.runtime_fingerprint = "native-unqualified"
+        self.explicit_continuation = False
+        self.continuation_user_object: Path | None = None
         self.wake = threading.Event()
         self.guard = threading.RLock()
         self.worker = None
@@ -236,6 +238,11 @@ class Engine:
         record = a.get("process") if args is None else None
         process = None
         if args is not None:
+            control = getattr(self, "continuation_user_object", None)
+            if phase == "solving" and control:
+                for name in ("continuation.stop", "continuation-stop-ack.json"):
+                    (raw / name).unlink(missing_ok=True)
+                args = [*args, "user=" + str(control)]
             if phase == "solving":
                 initial = solver.sta_progress(raw / (a["job_name"] + ".sta"), r["resolved"]["duration"]) if "recover" in args else {}
                 a.setdefault("phase_simulation_start_s", {})[phase] = initial.get("simulation_time_s", 0.0)
@@ -275,14 +282,18 @@ class Engine:
                 if stopped_at is None:
                     stopped_at = time.monotonic()
                     if phase == "solving":
-                        p = solver.launch(
-                            self.abaqus, ["terminate", "job=" + a["job_name"]], raw, logs / "terminate.log"
-                        )
-                        try:
-                            p.wait(timeout=10)
-                        except Exception:
-                            pass
-                if phase != "solving" or time.monotonic() - stopped_at > 15:
+                        if getattr(self, "continuation_user_object", None):
+                            (raw / "continuation.stop").touch()
+                        else:
+                            p = solver.launch(
+                                self.abaqus, ["terminate", "job=" + a["job_name"]], raw, logs / "terminate.log"
+                            )
+                            try:
+                                p.wait(timeout=10)
+                            except Exception:
+                                pass
+                grace = 120 if getattr(self, "continuation_user_object", None) else 15
+                if phase != "solving" or time.monotonic() - stopped_at > grace:
                     solver.terminate_owned(record)
             if spool is not None:
                 consume_spool(spool, self.field_sink)
@@ -643,6 +654,7 @@ class Engine:
                 "extract_directory": str(extracted),
                 "chunk_size": 48000,
                 "full_fields": full_fields,
+                "damage_metrics": bool(r["resolved"]["core_material"].get("johnson_cook")),
             },
         )
         write_json(extracted / "export-policy.json", {"full_fields": full_fields})

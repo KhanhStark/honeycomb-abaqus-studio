@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
 from typing import Literal
 from urllib.parse import urlsplit
@@ -123,6 +124,15 @@ def create_app(github: Github | None = None) -> FastAPI:
             "storage": "GitHub Releases",
             "worker_started_in_web": False,
         }
+
+    @app.get('/api/campaigns/{identity}')
+    def campaign_status(identity: str):
+        if not re.fullmatch(r'core-damage-v2-[0-9]{8}', identity):
+            raise HTTPException(404, 'Không tìm thấy chiến dịch.')
+        report, _ = catalog.get('campaigns/' + identity + '/status')
+        if report is None:
+            raise HTTPException(404, 'Chiến dịch chưa được khởi tạo trên GitHub.')
+        return report
 
     @app.get("/api/session")
     def identity(request: Request):

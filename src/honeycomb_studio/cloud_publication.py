@@ -15,7 +15,7 @@ def prepare(source: Path, target: Path):
         relative = path.relative_to(source)
         if path.is_symlink() or not path.is_file() or path.suffix.lower() not in ALLOWED:
             continue
-        if path.suffix.lower() == ".tar" and path.name != "field-reductions.tar":
+        if path.suffix.lower() == ".tar" and path.name not in ("field-reductions.tar", "state.tar"):
             continue
         if relative.as_posix() == "RESTORE-README.txt" or (
             has_reductions and relative.as_posix() == "field-reductions.tar"
@@ -23,7 +23,7 @@ def prepare(source: Path, target: Path):
             continue
         if any(p in ("cache", "spool", "credentials", "backup-manifests", ".git", ".cloud-stream") for p in relative.parts):
             continue
-        if path.name in ("session.json", "engine-settings.json"):
+        if path.name in ("session.json", "engine-settings.json", "publication-pending.json", "publication-result.json"):
             continue
         if "reduced-fields" in relative.parts or "remote-fields" in relative.parts:
             reductions.append((path, relative))

@@ -21,6 +21,8 @@ def pack(folder, outcome):
                 if path.is_symlink():
                     raise ValueError('Symlink in checkpoint')
                 if path.is_file():
+                    if path.name in ('publication-pending.json', 'publication-result.json'):
+                        continue
                     tar.add(path, arcname=path.relative_to(ROOT), recursive=False)
         with archive.open('rb') as stream:
             receipt.update(sha256=hashlib.file_digest(stream, 'sha256').hexdigest(), bytes=archive.stat().st_size)

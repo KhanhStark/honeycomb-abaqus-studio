@@ -1,5 +1,114 @@
 {
   "$defs": {
+    "JohnsonCook": {
+      "additionalProperties": false,
+      "description": "MPa, seconds, degrees Celsius; D3 follows the Abaqus convention.",
+      "properties": {
+        "A": {
+          "default": 324,
+          "exclusiveMinimum": 0,
+          "title": "A",
+          "type": "number"
+        },
+        "B": {
+          "default": 114,
+          "minimum": 0,
+          "title": "B",
+          "type": "number"
+        },
+        "n": {
+          "default": 0.42,
+          "exclusiveMinimum": 0,
+          "title": "N",
+          "type": "number"
+        },
+        "C": {
+          "default": 0.002,
+          "minimum": 0,
+          "title": "C",
+          "type": "number"
+        },
+        "m": {
+          "default": 1.34,
+          "exclusiveMinimum": 0,
+          "title": "M",
+          "type": "number"
+        },
+        "reference_rate": {
+          "default": 1,
+          "exclusiveMinimum": 0,
+          "title": "Reference Rate",
+          "type": "number"
+        },
+        "transition_temperature": {
+          "default": 20,
+          "title": "Transition Temperature",
+          "type": "number"
+        },
+        "melting_temperature": {
+          "default": 650,
+          "title": "Melting Temperature",
+          "type": "number"
+        },
+        "d1": {
+          "default": -0.77,
+          "title": "D1",
+          "type": "number"
+        },
+        "d2": {
+          "default": 1.45,
+          "title": "D2",
+          "type": "number"
+        },
+        "d3": {
+          "default": 0.47,
+          "title": "D3",
+          "type": "number"
+        },
+        "d4": {
+          "default": 0,
+          "title": "D4",
+          "type": "number"
+        },
+        "d5": {
+          "default": 1.6,
+          "title": "D5",
+          "type": "number"
+        },
+        "failure_displacement_mm": {
+          "default": 0.1,
+          "exclusiveMinimum": 0,
+          "title": "Failure Displacement Mm",
+          "type": "number"
+        },
+        "specific_heat_J_kg_K": {
+          "default": 900,
+          "exclusiveMinimum": 0,
+          "title": "Specific Heat J Kg K",
+          "type": "number"
+        },
+        "inelastic_heat_fraction": {
+          "default": 0.9,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Inelastic Heat Fraction",
+          "type": "number"
+        },
+        "source": {
+          "default": "https://doi.org/10.1177/1687814018797794; M1; Abaqus D3 convention",
+          "title": "Source",
+          "type": "string"
+        },
+        "status": {
+          "const": "reference_unvalidated",
+          "default": "reference_unvalidated",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "title": "JohnsonCook",
+      "type": "object"
+    },
     "Material": {
       "additionalProperties": false,
       "properties": {
@@ -49,13 +158,25 @@
           "type": "number",
           "unit": "MPa"
         },
+        "johnson_cook": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JohnsonCook"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "hardening": {
           "default": "shifted_ramberg_osgood",
           "enum": [
             "shifted_ramberg_osgood",
             "perfect_plastic",
             "bilinear",
-            "table"
+            "table",
+            "johnson_cook"
           ],
           "title": "Hardening",
           "type": "string"
@@ -109,6 +230,54 @@
     "ModelSpec": {
       "additionalProperties": false,
       "properties": {
+        "physics_version": {
+          "default": "legacy-v1",
+          "title": "Physics Version",
+          "type": "string"
+        },
+        "impactor_shape": {
+          "default": "sphere",
+          "enum": [
+            "sphere",
+            "blunt_cone"
+          ],
+          "title": "Impactor Shape",
+          "type": "string"
+        },
+        "nose_diameter_mm": {
+          "default": 20,
+          "exclusiveMinimum": 0,
+          "title": "Nose Diameter Mm",
+          "type": "number"
+        },
+        "shank_diameter_mm": {
+          "default": 40,
+          "exclusiveMinimum": 0,
+          "title": "Shank Diameter Mm",
+          "type": "number"
+        },
+        "cone_height_mm": {
+          "default": 10,
+          "exclusiveMinimum": 0,
+          "title": "Cone Height Mm",
+          "type": "number"
+        },
+        "shank_height_mm": {
+          "default": 30,
+          "exclusiveMinimum": 0,
+          "title": "Shank Height Mm",
+          "type": "number"
+        },
+        "adiabatic": {
+          "default": false,
+          "title": "Adiabatic",
+          "type": "boolean"
+        },
+        "initial_temperature_C": {
+          "default": 20,
+          "title": "Initial Temperature C",
+          "type": "number"
+        },
         "core_topology": {
           "default": "hexagonal",
           "enum": [

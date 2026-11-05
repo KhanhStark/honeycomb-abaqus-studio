@@ -20,6 +20,38 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
 
+class JohnsonCook(StrictModel):
+    """MPa, seconds, degrees Celsius; D3 follows the Abaqus convention."""
+    A: float = Field(default=324, gt=0)
+    B: float = Field(default=114, ge=0)
+    n: float = Field(default=0.42, gt=0)
+    C: float = Field(default=0.002, ge=0)
+    m: float = Field(default=1.34, gt=0)
+    reference_rate: float = Field(default=1, gt=0)
+    transition_temperature: float = 20
+    melting_temperature: float = 650
+    d1: float = -0.77
+    d2: float = 1.45
+    d3: float = 0.47
+    d4: float = 0
+    d5: float = 1.6
+    failure_displacement_mm: float = Field(default=0.1, gt=0)
+    specific_heat_J_kg_K: float = Field(default=900, gt=0)
+    inelastic_heat_fraction: float = Field(default=0.9, ge=0, le=1)
+    source: str = "https://doi.org/10.1177/1687814018797794; M1; Abaqus D3 convention"
+    status: Literal["reference_unvalidated"] = "reference_unvalidated"
+
+    @model_validator(mode="after")
+    def temperatures(self):
+        if self.melting_temperature <= self.transition_temperature:
+            raise ValueError("Melting temperature must exceed transition temperature")
+        # Plane-stress shell domain, including biaxial tension and compression.
+        if any(self.d1 + self.d2 * math.exp(-self.d3 * eta) <= 0
+               for eta in (-2 / 3, -1 / 3, 0, 1 / 3, 2 / 3)):
+            raise ValueError("Nonpositive Johnson-Cook fracture strain in shell stress domain")
+        return self
+
+
 class Material(StrictModel):
     name: str = "Aluminium"
     density: float = parameter(2700.0, "Khối lượng riêng", "kg/m³", "Paper Table 1", gt=0)
@@ -29,7 +61,8 @@ class Material(StrictModel):
     ultimate: float = parameter(
         124.0, "Giới hạn bền (metadata, không xóa phần tử)", "MPa", "Paper Table 1", gt=0
     )
-    hardening: Literal["shifted_ramberg_osgood", "perfect_plastic", "bilinear", "table"] = (
+    johnson_cook: JohnsonCook | None = None
+    hardening: Literal["shifted_ramberg_osgood", "perfect_plastic", "bilinear", "table", "johnson_cook"] = (
         "shifted_ramberg_osgood"
     )
     alpha: float = parameter(3 / 7, "Hệ số Ramberg–Osgood", "", "Paper Eq. 1; shifted at yield", gt=0)
@@ -39,6 +72,8 @@ class Material(StrictModel):
 
     @model_validator(mode="after")
     def check_table(self):
+        if (self.hardening == "johnson_cook") != (self.johnson_cook is not None):
+            raise ValueError("Johnson-Cook hardening and its complete material card must be specified together")
         if self.hardening == "table":
             t = self.plastic_table
             if not t or t[0][1] != 0 or any(s <= 0 or e < 0 for s, e in t):
@@ -48,6 +83,9 @@ class Material(StrictModel):
         return self
 
     def table(self) -> list[list[float]]:
+        if self.johnson_cook:
+            # CAE placeholder only. The solver deck receives the complete JC card.
+            return [[self.johnson_cook.A, 0.0]]
         if self.hardening == "table":
             return [list(v) for v in self.plastic_table]
         if self.hardening == "perfect_plastic":
@@ -67,6 +105,14 @@ class Material(StrictModel):
 
 
 class ModelSpec(StrictModel):
+    physics_version: str = "legacy-v1"
+    impactor_shape: Literal["sphere", "blunt_cone"] = "sphere"
+    nose_diameter_mm: float = Field(default=20, gt=0)
+    shank_diameter_mm: float = Field(default=40, gt=0)
+    cone_height_mm: float = Field(default=10, gt=0)
+    shank_height_mm: float = Field(default=30, gt=0)
+    adiabatic: bool = False
+    initial_temperature_C: float = 20
     core_topology: Literal["hexagonal", "reentrant_0"] = parameter(
         "hexagonal", "Cấu trúc lõi", source="Hexagonal reference / re-entrant image 1, 0 degrees"
     )
@@ -157,6 +203,13 @@ class ModelSpec(StrictModel):
 
     @model_validator(mode="after")
     def geometry(self):
+        if self.impactor_shape == "blunt_cone" and self.shank_diameter_mm <= self.nose_diameter_mm:
+            raise ValueError("Cone shank diameter must exceed nose diameter")
+        cards = [m.johnson_cook for m in (self.core_material, self.face_material)]
+        if self.adiabatic and not all(cards):
+            raise ValueError("Adiabatic campaign requires complete thermal material cards")
+        if any(cards) and self.physics_version == "legacy-v1":
+            raise ValueError("Damage models require an explicit physics version")
         cell_width = self.cell_size
         if self.core_topology == "hexagonal" and self.hex_geometry == "parametric":
             cell_width = 2 * self.hex_l * math.sin(math.radians(self.hex_theta_deg))

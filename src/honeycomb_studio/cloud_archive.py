@@ -87,11 +87,11 @@ class ReleaseArchive:
             try:
                 uploaded = self._upload(path, name)
                 if self.tag:
-                    from .cloud_github import REPOSITORY
-
                     # Draft releases return temporary untagged URLs which stop
                     # working after publication. Persist the reserved tag URL.
-                    uploaded["url"] = f"https://github.com/{REPOSITORY}/releases/download/{quote(self.tag, safe='')}/{quote(name, safe='')}"
+                    from .cloud_github import REPOSITORY
+                    repository = getattr(self.github, "repository", REPOSITORY)
+                    uploaded["url"] = f"https://github.com/{repository}/releases/download/{quote(self.tag, safe='')}/{quote(name, safe='')}"
                 return uploaded
             except (httpx.TransportError, httpx.HTTPStatusError) as exc:
                 self._assets = None  # Re-read after uncertain writes; never upload blindly.
@@ -171,7 +171,7 @@ class ReleaseArchive:
         try:
             with path.open("rb") as stream:
                 response = self.github.client.post(
-                    f"https://uploads.github.com/repos/{REPOSITORY}/releases/{self.release_id}/assets",
+                    f"https://uploads.github.com/repos/{getattr(self.github, 'repository', REPOSITORY)}/releases/{self.release_id}/assets",
                     params={"name": name},
                     headers=headers,
                     content=chunks(stream) if transfer else stream,
