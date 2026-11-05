@@ -1,6 +1,31 @@
 """Integrity receipts for cross-runner Explicit recover; never certify partial data."""
 import hashlib
+import json
+import math
+import subprocess
 from pathlib import Path
+
+
+def verify_checkpoint_history(raw: Path, job_name: str, executable: str, spec: dict):
+    from . import solver
+    from .data import history_continuity
+    from .engine import ADAPTERS
+
+    acknowledgment = json.loads((raw / 'continuation-stop-ack.json').read_text())
+    stopped = acknowledgment['simulation_time_s']
+    if not isinstance(stopped, (int, float)) or not math.isfinite(stopped) or not 0 < stopped <= spec['duration']:
+        raise ValueError('Invalid orderly stop acknowledgment')
+    destination = raw / 'checkpoint-history.json'
+    with (raw / 'checkpoint-history-check.log').open('w') as log:
+        subprocess.run(solver.command(executable, 'python', str(ADAPTERS / 'checkpoint_history.py'),
+                                      str(raw / (job_name + '.odb')), str(destination)),
+                       cwd=raw, stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
+    histories = json.loads(destination.read_text())
+    integrity = history_continuity(histories, {'duration': stopped,
+            'history_intervals': stopped / (spec['duration'] / spec['history_intervals'])})
+    if not integrity['passed']:
+        raise ValueError('Checkpoint has unflushed or missing original history; refusing recover: ' + json.dumps(integrity))
+    return {'stop': acknowledgment, 'history_integrity': integrity}
 
 
 def checkpoint_inventory(raw: Path, job_name: str):

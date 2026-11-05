@@ -2,7 +2,9 @@ import importlib.util
 import io
 import json
 import tarfile
+from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -34,6 +36,55 @@ def test_recovery_requires_all_state_families(tmp_path):
     (tmp_path / 'hc.sel').unlink()
     with pytest.raises(ValueError, match='sel'):
         checkpoint_inventory(tmp_path, 'hc')
+
+
+@pytest.mark.parametrize('gap', [False, True])
+def test_checkpoint_must_contain_original_history_through_stop_time(tmp_path, monkeypatch, gap):
+    from honeycomb_studio.cloud_continuation import verify_checkpoint_history
+    (tmp_path / 'continuation-stop-ack.json').write_text(json.dumps({'simulation_time_s': .001}))
+    times = [i * .000005 for i in range(201) if not gap or not 100 <= i < 120]
+    history = [{'step': 'Impact', 'region': 'IMPACTOR', 'variable': 'A3', 'data': [[t, 0] for t in times]}]
+    def read(args, **kwargs):
+        Path(args[-1]).write_text(json.dumps(history))
+    monkeypatch.setattr('honeycomb_studio.cloud_continuation.subprocess.run', read)
+    spec = {'duration': .012, 'history_intervals': 2400}
+    if gap:
+        with pytest.raises(ValueError, match='missing original history'):
+            verify_checkpoint_history(tmp_path, 'hc', 'fixture', spec)
+    else:
+        assert verify_checkpoint_history(tmp_path, 'hc', 'fixture', spec)['history_integrity']['passed']
+
+
+def test_segment_reads_checkpoint_before_native_runtime_closes(tmp_path, monkeypatch):
+    import sys
+    sys.path.insert(0, str(Path(__file__).parents[1] / 'scripts'))
+    import cloud_segment
+    active = []
+    run = {'id': 'run', 'status': 'interrupted', 'resolved': {'duration': .012},
+           'attempts': [{'path': str(tmp_path), 'job_name': 'hc'}]}
+    @contextmanager
+    def runtime(root, **kwargs):
+        active.append(True)
+        try:
+            yield Path('native-wrapper')
+        finally:
+            active.pop()
+    def read(*args):
+        assert active, 'private native runtime was closed before querying the ODB'
+        return {'history_integrity': {'passed': True}}
+    engine = SimpleNamespace(execute_wave=lambda *args: None)
+    progress = SimpleNamespace(stop_reason='timed_out', stop_solver=lambda *args: None,
+                               start=lambda *args: None, done=SimpleNamespace(set=lambda: None),
+                               thread=SimpleNamespace(join=lambda **kwargs: None))
+    monkeypatch.setattr(cloud_segment, 'native_runtime', runtime)
+    monkeypatch.setattr(cloud_segment, 'Engine', lambda *args, **kwargs: engine)
+    monkeypatch.setattr(cloud_segment, 'verify_checkpoint_history', read)
+    monkeypatch.setattr(cloud_segment.signal, 'signal', lambda *args: None)
+    monkeypatch.setenv('GITHUB_SHA', 'revision')
+    store = SimpleNamespace(get=lambda *args: run)
+    actual, check = cloud_segment.execute_segment(tmp_path, store, run, {}, progress, 'runtime', tmp_path / 'control.c')
+    assert actual == run and check['history_integrity']['passed']
+    assert not active
 
 
 def test_engine_continues_original_attempt_without_building(monkeypatch, tmp_path):

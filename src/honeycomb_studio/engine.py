@@ -62,6 +62,8 @@ class Engine:
         self.postprocess_guard = threading.Lock()
         self.backup = None
         self.field_sink = None
+        self.continuation_control: Path | None = None
+        self.explicit_continuation = False
         # Process identity survives engine crashes. Never launch a replacement while
         # an owned process is still alive; worker can adopt and drain it first.
         for r in store.list("runs"):
@@ -236,6 +238,17 @@ class Engine:
         record = a.get("process") if args is None else None
         process = None
         if args is not None:
+            if phase == 'solving' and self.continuation_control is not None:
+                control = raw / (a['job_name'] + '.continuation.c')
+                expected = checksum(self.continuation_control)
+                if control.exists() and checksum(control) != expected:
+                    raise ValueError('Continuation callback changed; recover requires the original source')
+                if not control.exists():
+                    shutil.copy2(self.continuation_control, control)
+                for marker in ('continuation.stop', 'continuation-stop-ack.json'):
+                    (raw / marker).unlink(missing_ok=True)
+                a['continuation_control_sha256'] = expected
+                args = [*args, 'user=' + str(control)]
             if phase == "solving":
                 initial = solver.sta_progress(raw / (a["job_name"] + ".sta"), r["resolved"]["duration"]) if "recover" in args else {}
                 a.setdefault("phase_simulation_start_s", {})[phase] = initial.get("simulation_time_s", 0.0)
@@ -275,14 +288,20 @@ class Engine:
                 if stopped_at is None:
                     stopped_at = time.monotonic()
                     if phase == "solving":
-                        p = solver.launch(
-                            self.abaqus, ["terminate", "job=" + a["job_name"]], raw, logs / "terminate.log"
-                        )
-                        try:
-                            p.wait(timeout=10)
-                        except Exception:
-                            pass
-                if phase != "solving" or time.monotonic() - stopped_at > 15:
+                        if self.continuation_control is not None:
+                            # The callback writes restart data and exits through
+                            # Abaqus, allowing buffered history to close normally.
+                            (raw / 'continuation.stop').touch()
+                        else:
+                            p = solver.launch(
+                                self.abaqus, ["terminate", "job=" + a["job_name"]], raw, logs / "terminate.log"
+                            )
+                            try:
+                                p.wait(timeout=10)
+                            except Exception:
+                                pass
+                grace = 90 if self.continuation_control is not None else 15
+                if phase != "solving" or time.monotonic() - stopped_at > grace:
                     solver.terminate_owned(record)
             if spool is not None:
                 consume_spool(spool, self.field_sink)

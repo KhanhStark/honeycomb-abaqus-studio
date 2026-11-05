@@ -11,13 +11,42 @@ from native_cloud_worker import native_runtime
 
 from honeycomb_studio import solver
 from honeycomb_studio.cloud_archive import ReleaseArchive
-from honeycomb_studio.cloud_continuation import checkpoint_inventory, verify_checkpoint
+from honeycomb_studio.cloud_continuation import (
+    checkpoint_inventory,
+    verify_checkpoint,
+    verify_checkpoint_history,
+)
 from honeycomb_studio.cloud_github import JOB_ID, Catalog, Github
 from honeycomb_studio.cloud_matrix import ShardCatalog
 from honeycomb_studio.cloud_progress import Progress
+from honeycomb_studio.data import checksum
 from honeycomb_studio.engine import Engine
 from honeycomb_studio.models import BatchSpec, digest, expand
 from honeycomb_studio.store import Store, write_json
+
+
+def execute_segment(root, store, run, batch, progress, runtime_hash, control):
+    history_check = None
+    with native_runtime(root, continuation=True) as executable:
+        engine = Engine(store, abaqus=str(executable), fake=False)
+        engine.explicit_continuation = True
+        engine.continuation_control = control
+        engine.runtime_fingerprint = runtime_hash
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(sig, lambda *_: progress.stop_solver('cancelled'))
+        progress.start(os.environ['GITHUB_SHA'])
+        try:
+            engine.execute_wave([run], batch)
+        finally:
+            progress.done.set()
+            progress.thread.join(timeout=70)
+        run = store.get('runs', run['id'])
+        if run['status'] == 'interrupted' and progress.stop_reason == 'timed_out':
+            attempt = run['attempts'][-1]
+            raw = Path(attempt['path']) / 'raw'
+            # The query needs the private license config and container network.
+            history_check = verify_checkpoint_history(raw, attempt['job_name'], str(executable), run['resolved'])
+    return run, history_check
 
 
 def main():
@@ -43,6 +72,11 @@ def main():
     if digest(job['spec']) != job['input_hash']:
         raise ValueError('Catalog input digest mismatch')
     runtime_hash = digest(require_qualification(Path.cwd()))
+    control = Path('scripts/linux_media/continuation_control.c').resolve()
+    evidence = json.loads(Path('docs/evidence/orderly-explicit-checkpoint.json').read_text())
+    if (not evidence.get('passed') or not evidence.get('history_integrity', {}).get('passed')
+            or evidence.get('source_sha256') != checksum(control)):
+        raise ValueError('Orderly checkpoint callback has not passed native history recovery acceptance')
     model = dict(job['spec'])
     model.update(render_images=False, backup_after_run=False, max_runs=1, export_all_fields=job['profile'] == 'full')
     spec = BatchSpec.model_validate(model)
@@ -81,19 +115,7 @@ def main():
     deadline = time.monotonic() + max(0, 240 * 60 - (time.time() - float(os.environ['HONEYCOMB_WORKFLOW_STARTED_EPOCH'])))
     progress = Progress(github, catalog, args.job_id, store, batch['id'], deadline)
     try:
-        with native_runtime(root) as executable:
-            engine = Engine(store, abaqus=str(executable), fake=False)
-            engine.explicit_continuation = True
-            engine.runtime_fingerprint = runtime_hash
-            for sig in (signal.SIGTERM, signal.SIGINT):
-                signal.signal(sig, lambda *_: progress.stop_solver('cancelled'))
-            progress.start(os.environ['GITHUB_SHA'])
-            try:
-                engine.execute_wave([run], batch)
-            finally:
-                progress.done.set()
-                progress.thread.join(timeout=70)
-        run = store.get('runs', run['id'])
+        run, history_check = execute_segment(root, store, run, batch, progress, runtime_hash, control)
         if run['status'] in ('completed', 'review'):
             publisher = ReleaseArchive(github, job['reserved_release_id'], tag='simulation-' + args.job_id)
             publisher.publish(root, attempt=f'workflow-{workflow}', complete=True)
@@ -108,11 +130,13 @@ def main():
                 raise RuntimeError('Solver failed independently of segment budget: ' + str(run.get('error')))
             attempt = run['attempts'][-1]
             raw = Path(attempt['path']) / 'raw'
+            if history_check is None:
+                raise RuntimeError('No verified original history for this checkpoint')
             files = checkpoint_inventory(raw, attempt['job_name'])
             receipt = {'segment': args.segment, 'workflow': workflow, 'child_id': args.job_id,
                        'batch_id': batch['id'], 'run_id': run['id'], 'job_name': attempt['job_name'],
                        'input_hash': run['input_hash'], 'runtime_hash': runtime_hash,
-                       'cpus': run['resolved']['cpus'], 'files': files,
+                       'cpus': run['resolved']['cpus'], 'files': files, 'orderly_checkpoint': history_check,
                        'progress': solver.sta_progress(raw / (attempt['job_name'] + '.sta'), run['resolved']['duration'])}
             write_json(marker, receipt)
             if args.segment == 3:

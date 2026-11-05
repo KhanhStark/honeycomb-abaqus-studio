@@ -1,0 +1,72 @@
+{
+  "passed": true,
+  "before": {
+    "solver_success": false,
+    "solver_error": true,
+    "increment": 310185,
+    "simulation_time_s": 0.02005,
+    "total_time_s": 0.02005,
+    "cpu_time": "00:00:25",
+    "stable_increment_s": 1e-14,
+    "critical_element": 7,
+    "kinetic_energy_Nmm": 0.0,
+    "total_energy_Nmm": 0.0,
+    "solver_percent": 33.416666666666664
+  },
+  "after": {
+    "solver_success": true,
+    "solver_error": false,
+    "increment": 928293,
+    "simulation_time_s": 0.06,
+    "total_time_s": 0.06,
+    "cpu_time": "00:00:52",
+    "stable_increment_s": 6.463e-08,
+    "critical_element": 8,
+    "kinetic_energy_Nmm": 0.0,
+    "total_energy_Nmm": 0.0,
+    "solver_percent": 100.0
+  },
+  "files": [
+    "recover_probe.abq",
+    "recover_probe.com",
+    "recover_probe.dat",
+    "recover_probe.inp",
+    "recover_probe.mdl",
+    "recover_probe.msg",
+    "recover_probe.odb",
+    "recover_probe.pac",
+    "recover_probe.prt",
+    "recover_probe.res",
+    "recover_probe.sel",
+    "recover_probe.sta",
+    "recover_probe.stt"
+  ],
+  "physics_changed": false,
+  "history_integrity": {
+    "passed": true,
+    "channels": 11,
+    "expected_interval_s": 5.9999999999999995e-05,
+    "maximum_allowed_gap_s": 8.999999999999999e-05,
+    "issues": []
+  },
+  "stop": {
+    "simulation_time_s": 0.020048606096847672,
+    "increment": 310185
+  },
+  "source_sha256": "b969448606d7a1f9242a7f2ef421e0bfcf6db9b1eeade5c418780a4efdebd858",
+  "source_commit": "759ba0a066d269bec049ba6bf06458f3070958f6",
+  "workflow_run_id": 42107005432,
+  "url": "https://github.com/xuankhanh24/honeycomb-abaqus-studio/actions/runs/42107005432",
+  "checkpoint_history_integrity": {
+    "passed": true,
+    "channels": 11,
+    "expected_interval_s": 5.9999999999999995e-05,
+    "maximum_allowed_gap_s": 8.999999999999999e-05,
+    "issues": []
+  },
+  "scope": "Native small-model stop/recover acceptance; research configurations retain independent quality gates.",
+  "duration_s": 0.06,
+  "history_intervals": 1000,
+  "cpus": 4,
+  "precision": "double=both"
+}
