@@ -61,7 +61,7 @@ for step, obj in odb.steps.items():
 odb.close()
 open(sys.argv[-1],'w').write(json.dumps(channels))
 ''')
-    with native_runtime(ROOT) as executable:
+    with native_runtime(ROOT, continuation=True) as executable:
         subprocess.run(solver.command(str(executable), 'cae', 'noGUI=' + str(ROOT / 'build.py')), cwd=ROOT, check=True, timeout=120)
         process = solver.launch(str(executable), ['job=recover_probe', 'cpus=4', 'double=both', 'user=' + str(control), 'interactive'], ROOT, ROOT / 'first.log')
         deadline = time.monotonic() + 180

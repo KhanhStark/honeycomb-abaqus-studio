@@ -19,7 +19,8 @@ def test_invalid_license_configuration(endpoint, vendor):
         native_cloud_worker.license_settings(endpoint, vendor)
 
 
-def test_native_context_restricts_network_and_cleans_private_config(tmp_path, monkeypatch):
+@pytest.mark.parametrize('continuation', [False, True])
+def test_native_context_restricts_network_and_cleans_private_config(tmp_path, monkeypatch, continuation):
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setenv("ABAQUS_LICENSE_ENDPOINT", "27011@100.100.1.1")
     monkeypatch.setenv("ABAQUS_VENDOR_PORT", "27012")
@@ -33,9 +34,13 @@ def test_native_context_restricts_network_and_cleans_private_config(tmp_path, mo
 
     monkeypatch.setattr(native_cloud_worker.subprocess, "run", invoke)
     with pytest.raises(RuntimeError, match="interrupted"):
-        with native_cloud_worker.native_runtime(tmp_path / "results") as executable:
+        with native_cloud_worker.native_runtime(tmp_path / "results", continuation=continuation) as executable:
             assert executable.name == "abaqus_container.py"
             assert Path(os.environ["HONEYCOMB_LICENSE_CONFIG"]).is_file()
+            config = Path(os.environ["HONEYCOMB_LICENSE_CONFIG"]).read_text()
+            assert ('link_sl=' in config) is continuation
+            if continuation:
+                assert "'g++','-shared'" in config and 'ifort' not in config
             assert os.environ["HONEYCOMB_IMPACT_ROOT"] == str((tmp_path / "results").resolve())
             raise RuntimeError("interrupted")
     assert not (tmp_path / "cloud-private/abaqus_v6.env").exists()
