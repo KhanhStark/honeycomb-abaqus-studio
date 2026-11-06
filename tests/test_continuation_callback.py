@@ -22,8 +22,6 @@ int main(void) {
     for (int i = 0; i < 256; ++i)
         vexternaldb_(&op, integers, &ni, reals, &nr);
     assert(integers[5] == 1);
-    op = 4;
-    vexternaldb_(&op, integers, &ni, reals, &nr);
     assert(integers[4] == 2);
     /* Abaqus performs a final zero-time increment after termination is requested. */
     integers[4] = 0;

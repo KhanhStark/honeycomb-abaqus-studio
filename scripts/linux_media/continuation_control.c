@@ -44,13 +44,11 @@ void vexternaldb_(const int *operation, int *integers, const int *integer_count,
         integers[5] = 0; /* checkpoint is already written; no restart from the shutdown increment */
     if (*operation == 2 && pending == 0 && (++polls % 256 == 0) &&
         access(stop_path, F_OK) == 0) {
-        pending = 1;
-        integers[5] = 1; /* write restart at the end of this increment */
-    }
-    if (*operation == 4 && pending == 1) {
-        /* Termination adds one zero-time increment. Do not request it again
-         * from that increment, or overwrite the acknowledged checkpoint. */
+        /* Request both actions at SetupIncrement. Abaqus documents this as a
+         * supported termination point and it avoids the damage-model cleanup
+         * crash observed when status is changed from EndIncrement. */
         pending = 2;
+        integers[5] = 1; /* write restart at the end of this increment */
         integers[4] = 2; /* terminate analysis through the supported solver API */
         FILE *ack = fopen(ack_path, "w");
         if (ack) {
