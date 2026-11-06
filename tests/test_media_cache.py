@@ -92,3 +92,56 @@ def test_bad_download_never_publishes_an_installable_iso(tmp_path, data):
         download_iso(Session(data), "test-file-id", target, expected_bytes=10, expected_sha256=hashlib.sha256(b"valid-data").hexdigest())
     assert not target.exists()
     assert not target.with_suffix(".iso.part").exists()
+
+
+def test_interrupted_media_download_resumes_only_from_verified_range(tmp_path, monkeypatch):
+    import time
+
+    import requests
+
+    content = b'complete-pinned-transport-fixture'
+    calls = []
+    monkeypatch.setattr(time, 'sleep', lambda seconds: None)
+
+    class Interrupted(Response):
+        def iter_content(self, block_size):
+            yield content[:3]
+            raise requests.exceptions.ChunkedEncodingError('private bearer URL must not be logged')
+
+    class Resumable:
+        def get(self, url, **kwargs):
+            calls.append(kwargs.get('headers', {}))
+            if len(calls) == 1:
+                return Interrupted(content)
+            response = Response(content[3:])
+            response.status_code = 206
+            response.headers = {'Content-Range': f'bytes 3-{len(content)-1}/{len(content)}'}
+            return response
+
+    target = tmp_path / 'media.iso'
+    result = download_iso(Resumable(), 'test-file-id', target, expected_bytes=len(content),
+                          expected_sha256=hashlib.sha256(content).hexdigest())
+    assert calls == [{}, {'Range': 'bytes=3-'}]
+    assert target.read_bytes() == content and result['bytes'] == len(content)
+
+
+def test_media_retry_budget_is_bounded_and_does_not_log_provider_payloads(tmp_path, monkeypatch):
+    import time
+
+    import requests
+
+    monkeypatch.setattr(time, 'sleep', lambda seconds: None)
+    calls = []
+    error = requests.ConnectionError('private-token-and-download-url')
+
+    class Offline:
+        def get(self, *args, **kwargs):
+            calls.append(True)
+            raise error
+
+    target = tmp_path / 'media.iso'
+    with pytest.raises(requests.ConnectionError):
+        download_iso(Offline(), 'test-file-id', target)
+    assert len(calls) == 3
+    assert 'private-token' not in drive_failure_hint(error)
+    assert not target.exists() and not target.with_suffix('.iso.part').exists()

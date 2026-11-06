@@ -2,13 +2,22 @@
 
 import hashlib
 import re
+import time
 from pathlib import Path
+
+import requests
 
 ISO_NAME = "DS.SIMULIA.Suite.2020.Linux64_Softgozar.com.iso"
 DRIVE_NAME = "SIMULIA_Abaqus_2020_Linux64.iso"
 ISO_BYTES = 10066642944
 ISO_SHA256 = "d0b227290b5f62ea826b08c18bde222417817fc0d04b91abb0072cb52ebe43ad"
 MEDIA_KEY = "abaqus2020-linux-" + ISO_SHA256[:16]
+
+
+class DriveDownloadError(RuntimeError):
+    def __init__(self, status_code):
+        self.status_code = status_code
+        super().__init__('Drive download HTTP ' + str(status_code))
 
 
 def preflight_drive_iso(session, file_id):
@@ -29,6 +38,10 @@ def preflight_drive_iso(session, file_id):
 
 def drive_failure_hint(exc):
     """Only allowlisted OAuth codes reach public logs, never provider payloads."""
+    if isinstance(exc, DriveDownloadError):
+        return f'Drive HTTP {exc.status_code}: kiểm tra quyền tải hoặc thử lại khi dịch vụ ổn định'
+    if isinstance(exc, requests.RequestException):
+        return 'Kết nối tải Drive bị gián đoạn; đã thử tải lại có kiểm tra offset và SHA-256'
     if type(exc).__name__ == "RefreshError":
         code = next((a.get("error") for a in exc.args if isinstance(a, dict)), None)
         if code in ("invalid_grant", "invalid_client", "access_denied"):
@@ -61,19 +74,36 @@ def download_iso(session, file_id, destination: Path, *, logger=None,
     transfer = logger.transfer("Tải trực tiếp ISO từ Google Drive riêng", expected_bytes) if logger else None
     count, digest = 0, hashlib.sha256()
     try:
-        with session.get("https://www.googleapis.com/drive/v3/files/" + file_id,
-                         params={"alt": "media"}, stream=True, timeout=(30, 120)) as response:
-            if response.status_code != 200:
-                raise RuntimeError(f"Tải ISO từ Drive không thành công (HTTP {response.status_code}); kiểm tra tài khoản và quyền truy cập file")
-            with partial.open("wb") as output:
-                for block in response.iter_content(8 * 1024**2):
-                    count += len(block)
-                    if count > expected_bytes:
-                        raise ValueError("ISO tải về vượt kích thước đã ghim")
-                    output.write(block)
-                    digest.update(block)
-                    if transfer:
-                        transfer.advance(len(block))
+        for attempt in range(3):
+            try:
+                headers = {'Range': f'bytes={count}-'} if count else {}
+                with session.get("https://www.googleapis.com/drive/v3/files/" + file_id,
+                                 params={"alt": "media"}, headers=headers,
+                                 stream=True, timeout=(30, 120)) as response:
+                    if response.status_code != (206 if count else 200):
+                        raise DriveDownloadError(response.status_code)
+                    if count:
+                        span = re.fullmatch(r'bytes (\d+)-(\d+)/(\d+)', response.headers.get('Content-Range', ''))
+                        if (not span or int(span[1]) != count or int(span[3]) != expected_bytes
+                                or not count <= int(span[2]) < expected_bytes):
+                            raise ValueError('Drive returned an invalid resume offset or media size')
+                    with partial.open('ab' if count else 'wb') as output:
+                        for block in response.iter_content(8 * 1024**2):
+                            count += len(block)
+                            if count > expected_bytes:
+                                raise ValueError("ISO tải về vượt kích thước đã ghim")
+                            output.write(block)
+                            digest.update(block)
+                            if transfer:
+                                transfer.advance(len(block))
+                break
+            except (requests.RequestException, DriveDownloadError) as exc:
+                if (attempt == 2 or isinstance(exc, DriveDownloadError)
+                        and exc.status_code not in (429, 500, 502, 503, 504)):
+                    raise
+                if logger:
+                    logger.emit('RETRY', f'Drive: thử {attempt + 2}/3 từ byte {count}; ' + drive_failure_hint(exc))
+                time.sleep(2 ** attempt)
         if count != expected_bytes or digest.hexdigest() != expected_sha256:
             raise ValueError("ISO tải về không khớp kích thước/SHA-256; không được chạy bộ cài")
         partial.replace(destination)

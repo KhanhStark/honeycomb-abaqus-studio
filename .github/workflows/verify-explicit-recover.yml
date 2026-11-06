@@ -18,6 +18,7 @@ jobs:
       ABAQUS_LICENSE_ENDPOINT: ${{ secrets.ABAQUS_LICENSE_ENDPOINT }}
       ABAQUS_VENDOR_PORT: ${{ secrets.ABAQUS_VENDOR_PORT }}
       HONEYCOMB_INSTALL_CAA: '1'
+      HONEYCOMB_ACTIONS_LOG: '1'
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -59,6 +60,7 @@ jobs:
             /tmp/honeycomb-recover-probe/*.json
             /tmp/honeycomb-recover-probe/*.txt
             output/install-probe/caa-installer.log
+            output/actions-logs/**
             output/explicit-stop-diagnostic.json
             /tmp/honeycomb-stop-diagnostic/**/*.log
             /tmp/honeycomb-stop-diagnostic/**/*.sta
