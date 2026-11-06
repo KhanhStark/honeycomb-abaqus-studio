@@ -56,4 +56,6 @@ void vexternaldb_(const int *operation, int *integers, const int *integer_count,
             fclose(ack);
         }
     }
+    if (*operation == 4 && pending == 2)
+        integers[5] = 0; /* do not carry the restart request into the zero-time shutdown increment */
 }

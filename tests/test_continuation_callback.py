@@ -23,6 +23,9 @@ int main(void) {
         vexternaldb_(&op, integers, &ni, reals, &nr);
     assert(integers[5] == 1);
     assert(integers[4] == 2);
+    op = 4;
+    vexternaldb_(&op, integers, &ni, reals, &nr);
+    assert(integers[5] == 0 && "restart must not carry into the zero-time shutdown increment");
     /* Abaqus performs a final zero-time increment after termination is requested. */
     integers[4] = 0;
     integers[3] = 257;
