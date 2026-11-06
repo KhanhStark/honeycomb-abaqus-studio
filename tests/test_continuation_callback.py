@@ -25,6 +25,11 @@ int main(void) {
     assert(integers[4] == 0);
     op = 2;
     vexternaldb_(&op, integers, &ni, reals, &nr);
+    assert(integers[5] == 1 && "same-increment callback must preserve the scheduled restart");
+    assert(integers[4] == 0);
+    integers[3] = 257;
+    reals[1] = .0101;
+    vexternaldb_(&op, integers, &ni, reals, &nr);
     assert(integers[5] == 0 && "restart must be cleared before termination");
     assert(integers[4] == 2);
     /* Abaqus performs a final zero-time increment after termination is requested. */
