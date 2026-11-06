@@ -38,6 +38,10 @@ jobs:
           drive_credentials: ${{ secrets.HONEYCOMB_DRIVE_CREDENTIALS_JSON }}
       - name: Verify JC initiation, softening, deletion and thermal units
         run: uv run --locked --extra cloud python scripts/campaign_validate.py
+      - name: Reproduce and recover the original elastic stop scenario
+        run: |
+          uv run --locked --extra cloud python scripts/verify_explicit_recover.py --root /tmp/honeycomb-elastic-recover-probe
+          mv output/explicit-recover-verification.json output/elastic-recover-verification.json
       - name: Save orderly Explicit checkpoint for another runner
         run: uv run --locked --extra cloud python scripts/verify_explicit_recover.py --stage create --damage
       - name: Publish checksummed checkpoint without rerunning the solver
@@ -56,6 +60,9 @@ jobs:
             /tmp/honeycomb-recover-probe/*.json
             /tmp/honeycomb-recover-probe/*.log
             /tmp/honeycomb-recover-probe/*.sta
+            /tmp/honeycomb-elastic-recover-probe/*.json
+            /tmp/honeycomb-elastic-recover-probe/*.log
+            /tmp/honeycomb-elastic-recover-probe/*.sta
   restore:
     needs: validate
     if: github.ref == 'refs/heads/main'

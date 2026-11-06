@@ -11,6 +11,10 @@ HARNESS = r'''
 #include <assert.h>
 #include <stdio.h>
 void vexternaldb_(const int *, int *, const int *, double *, const int *);
+static int thread_id = 0;
+static int exit_calls = 0;
+int get_thread_id_(void) { return thread_id; }
+void xplb_exit_(void) { ++exit_calls; }
 int main(void) {
     int op = 0, ni = 7, nr = 3;
     int integers[7] = {9, 4, 1, 256, 0, 0, 0};
@@ -19,6 +23,11 @@ int main(void) {
     FILE *stop = fopen("continuation.stop", "w");
     assert(stop); fclose(stop);
     op = 2;
+    thread_id = 1;
+    for (int i = 0; i < 256; ++i)
+        vexternaldb_(&op, integers, &ni, reals, &nr);
+    assert(integers[5] == 0 && exit_calls == 0);
+    thread_id = 0;
     for (int i = 0; i < 256; ++i)
         vexternaldb_(&op, integers, &ni, reals, &nr);
     assert(integers[5] == 1);
@@ -31,8 +40,8 @@ int main(void) {
     reals[1] = .0101;
     vexternaldb_(&op, integers, &ni, reals, &nr);
     assert(integers[5] == 0 && "restart must be cleared before termination");
-    assert(integers[4] == 2);
-    /* Abaqus performs a final zero-time increment after termination is requested. */
+    assert(integers[4] == 0 && exit_calls == 1);
+    /* The exit stub returns so duplicate callbacks can be checked. */
     integers[4] = 0;
     integers[3] = 257;
     reals[2] = 0.;
@@ -42,6 +51,7 @@ int main(void) {
     op = 4;
     vexternaldb_(&op, integers, &ni, reals, &nr);
     assert(integers[4] == 0 && "termination was requested again during shutdown");
+    assert(exit_calls == 1);
     return 0;
 }
 '''

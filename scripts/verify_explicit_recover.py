@@ -47,10 +47,13 @@ j.writeInput(consistencyChecking=ON)
 
 
 def main():
+    global ROOT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--stage', choices=('all', 'create', 'restore'), default='all')
     parser.add_argument('--damage', action='store_true', help='Verify JC damage/thermal/moving shell state')
+    parser.add_argument('--root', type=Path, default=ROOT, help='Separate probe directory for independent specimens')
     args = parser.parse_args()
+    ROOT = args.root.resolve()
     if args.stage != 'restore':
         ROOT.mkdir()
         (ROOT / 'abaqus_v6.env').write_text('verbose=ON\n')

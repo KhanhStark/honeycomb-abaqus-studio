@@ -41,8 +41,8 @@ def native_runtime(root, *, continuation=False):
     if continuation:
         # This callback contains C only; do not invoke the default Fortran driver.
         with config.open('a') as stream:
-            # The C callback has no Abaqus utility references. Avoid copying the
-            # solver's transitive C++ libraries into its unloadable user library.
+            # Public utility symbols resolve from the running Explicit solver.
+            # Avoid copying its transitive C++ libraries into the user library.
             stream.write("link_sl=['g++','-shared','-Wl,--as-needed','%E','-Wl,-soname,%U','-o','%U','%F','%A','%L','%B']\n")
     settings = {
         "HONEYCOMB_IMPACT_ROOT": str(root), "HONEYCOMB_LICENSE_HOST": host,

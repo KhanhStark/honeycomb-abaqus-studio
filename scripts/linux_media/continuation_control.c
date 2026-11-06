@@ -7,6 +7,15 @@
 #include <limits.h>
 #include <unistd.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+int get_thread_id_(void);
+void xplb_exit_(void);
+#ifdef __cplusplus
+}
+#endif
+
 static int control_path(char *path, size_t length, const char *name)
 {
     const char *directory = getenv("HONEYCOMB_CONTINUATION_DIRECTORY");
@@ -26,6 +35,9 @@ void vexternaldb_(const int *operation, int *integers, const int *integer_count,
     static double checkpoint_time = 0.;
     static int checkpoint_increment = 0;
     char stop_path[PATH_MAX], ack_path[PATH_MAX];
+    /* Abaqus 2020's threaded fatal-exit cleanup corrupts shared memory if
+     * several threads enter it. Only the main thread owns control and I/O. */
+    if (get_thread_id_() != 0) return;
     if (!initialized) {
         char metadata[PATH_MAX];
         if (control_path(metadata, sizeof(metadata), "continuation-control.json")) {
@@ -46,11 +58,9 @@ void vexternaldb_(const int *operation, int *integers, const int *integer_count,
         integers[5] = 0; /* checkpoint is already written; no restart from the shutdown increment */
     if (*operation == 2 && pending == 1 && integers[3] != checkpoint_increment &&
         reals[1] > checkpoint_time) {
-        /* The previous increment already wrote the restart. Clear the flag
-         * before requesting termination so Abaqus does not emit a second
-         * restart frame for its zero-time shutdown increment. */
+        /* The previous increment already wrote the restart. XPLB_EXIT closes
+         * solver files without the threaded iStatus fatal-error path. */
         integers[5] = 0;
-        integers[4] = 2; /* terminate analysis through the supported solver API */
         pending = 2;
         FILE *ack = fopen(ack_path, "w");
         if (ack) {
@@ -58,6 +68,7 @@ void vexternaldb_(const int *operation, int *integers, const int *integer_count,
                     checkpoint_time, checkpoint_increment);
             fclose(ack);
         }
+        xplb_exit_();
     }
     if (*operation == 2 && pending == 0 && (++polls % 256 == 0) &&
         access(stop_path, F_OK) == 0) {
