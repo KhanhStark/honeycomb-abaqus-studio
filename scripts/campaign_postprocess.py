@@ -27,6 +27,21 @@ from honeycomb_studio.store import Store, write_json
 
 
 class PostprocessOnlyEngine(Engine):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Use the established reduced-export/hard-link disk policy. The ODB
+        # already exists; admitting another complete FE output would block a
+        # postprocess-only job even when it has ample export/transfer space.
+        self.explicit_continuation = True
+
+    def _retained_solver_gb(self, run):
+        if not run.get('attempts'):
+            return 0.
+        attempt = run['attempts'][-1]
+        raw = Path(attempt['path']) / 'raw'
+        return sum(p.stat().st_size for p in raw.glob(attempt['job_name'] + '.*')
+                   if p.is_file() and not p.is_symlink()) / 1e9
+
     def _monitor(self, r, a, phase, args, spool=None):
         if phase in ('building', 'checking', 'solving'):
             raise ValueError('A postprocess recovery must never start an FE process')
