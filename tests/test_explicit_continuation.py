@@ -87,6 +87,80 @@ def test_segment_reads_checkpoint_before_native_runtime_closes(tmp_path, monkeyp
     assert not active
 
 
+def test_campaign_reads_original_checkpoint_history_inside_native_runtime(tmp_path, monkeypatch):
+    import sys
+    import time
+    sys.path.insert(0, str(Path(__file__).parents[1] / 'scripts'))
+    import campaign_worker
+
+    from honeycomb_studio.campaign import campaign_manifest
+    from honeycomb_studio.models import digest
+
+    root = tmp_path / 'results'
+    active, checked, published = [], [], []
+
+    @contextmanager
+    def runtime(*args, **kwargs):
+        active.append(True)
+        try:
+            yield Path('native-wrapper')
+        finally:
+            active.pop()
+
+    class FakeEngine:
+        def __init__(self, store, **kwargs):
+            self.store = store
+
+        def execute_wave(self, runs, batch):
+            run = runs[0]
+            folder = root / 'attempt'
+            raw = folder / 'raw'
+            raw.mkdir(parents=True)
+            (raw / 'continuation-stop-ack.json').write_text('{"simulation_time_s":0.002}')
+            for extension in ('abq', 'pac', 'res', 'sel', 'odb'):
+                (raw / ('hc.' + extension)).write_bytes(b'native-state')
+            run.update(status='interrupted', attempts=[dict(path=str(folder), job_name='hc',
+                phase_started_at={'solving': time.time() - 1}, durations={'solving': 1})])
+            self.store.save('runs', run)
+
+    def read(*args):
+        assert active, 'runtime closed before querying original campaign history'
+        checked.append(True)
+        return {'history_integrity': {'passed': True}}
+
+    progress = SimpleNamespace(stop_reason='timed_out', start=lambda *args: None, finish=lambda *args: None)
+    monkeypatch.setattr(campaign_worker, 'ROOT', root)
+    monkeypatch.setattr(campaign_worker, 'native_runtime', runtime)
+    monkeypatch.setattr(campaign_worker, 'Engine', FakeEngine)
+    monkeypatch.setattr(campaign_worker, 'Progress', lambda *args: progress)
+    monkeypatch.setattr(campaign_worker, 'require_qualification', lambda *args: {})
+    monkeypatch.setattr(campaign_worker, 'verify_checkpoint_history', read, raising=False)
+    monkeypatch.setattr(campaign_worker.signal, 'signal', lambda *args: None)
+    monkeypatch.setattr(campaign_worker.subprocess, 'run', lambda *args, **kwargs: SimpleNamespace(stdout='2020'))
+    monkeypatch.setattr(campaign_worker, 'publish_execution', lambda work, result, *args: published.append(result))
+    monkeypatch.setenv('HONEYCOMB_WORKFLOW_STARTED_EPOCH', str(time.time()))
+    work = dict(runtime_hash=digest({}), design=campaign_manifest()['pilot_designs'][0], segment=0,
+                ticket='a' * 32, source_sha='b' * 40)
+    catalog = SimpleNamespace(update=lambda key, transform: transform(work))
+    campaign_worker.execute(work, None, catalog, 'ticket')
+    assert checked and not active
+    assert published[0]['outcome'] == 'checkpoint'
+    receipt = json.loads((root / 'continuation.json').read_text())
+    assert receipt['orderly_checkpoint']['history_integrity']['passed']
+
+
+@pytest.mark.parametrize('error', ['munmap_chunk(): invalid pointer', 'free(): corrupted unsorted chunks',
+    'double free or corruption (out)', 'corrupted double-linked list', 'rank 0 terminated by signal 11'])
+def test_native_cleanup_crash_cannot_be_accepted_as_an_orderly_stop(tmp_path, error):
+    from honeycomb_studio.cloud_continuation import verify_solver_cleanup
+    log = tmp_path / 'solver.log'
+    log.write_text('Restart written\nThe program will exit as per user request in VEXTERNALDB\n' + error)
+    with pytest.raises(RuntimeError, match='cleanup'):
+        verify_solver_cleanup(log)
+    log.write_text('Restart written\nThe program will exit as per user request in VEXTERNALDB\n')
+    verify_solver_cleanup(log)
+
+
 def test_engine_continues_original_attempt_without_building(monkeypatch, tmp_path):
     store = Store(tmp_path)
     batch = store.create(BatchSpec(name='recover'))

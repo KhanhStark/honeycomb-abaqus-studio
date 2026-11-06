@@ -17,7 +17,11 @@ from honeycomb_studio import solver
 from honeycomb_studio.campaign import numerical_gate, one_run_spec
 from honeycomb_studio.campaign_queue import claim, receipt_hash, ticket_key
 from honeycomb_studio.cloud_archive import ReleaseArchive
-from honeycomb_studio.cloud_continuation import checkpoint_inventory, verify_checkpoint
+from honeycomb_studio.cloud_continuation import (
+    checkpoint_inventory,
+    verify_checkpoint,
+    verify_checkpoint_history,
+)
 from honeycomb_studio.cloud_github import Catalog, Github
 from honeycomb_studio.cloud_progress import Progress
 from honeycomb_studio.cloud_release import reserve_release
@@ -98,6 +102,7 @@ def execute(work, github, catalog, key):
     control = Path('scripts/linux_media/continuation_control.c').resolve()
     deadline = time.monotonic() + max(0, 240 * 60 - (time.time() - float(os.environ['HONEYCOMB_WORKFLOW_STARTED_EPOCH'])))
     progress = Progress(github, TicketProgress(catalog, key), work['ticket'], store, batch['id'], deadline)
+    history_check = None
     with native_runtime(ROOT, continuation=True) as executable:
         release_info = subprocess.run(solver.command(str(executable), 'information=release'), cwd=ROOT,
                                       check=True, text=True, capture_output=True, timeout=90)
@@ -120,6 +125,11 @@ def execute(work, github, catalog, key):
             conclusion = ('timed_out' if progress.stop_reason == 'timed_out' else
                           status if status in ('completed', 'review') else 'failed')
             progress.finish(conclusion)
+        run = store.get('runs', run['id'])
+        if progress.stop_reason == 'timed_out' and run['status'] == 'interrupted':
+            attempt = run['attempts'][-1]
+            raw = Path(attempt['path']) / 'raw'
+            history_check = verify_checkpoint_history(raw, attempt['job_name'], str(executable), run['resolved'])
     run = store.get('runs', run['id'])
     attempt = run['attempts'][-1] if run['attempts'] else {}
     solving_start = attempt.get('phase_started_at', {}).get('solving')
@@ -133,11 +143,14 @@ def execute(work, github, catalog, key):
         acknowledgement = raw / 'continuation-stop-ack.json'
         if not acknowledgement.is_file():
             raise ValueError('Solver did not acknowledge an orderly restart checkpoint')
+        if history_check is None:
+            raise ValueError('Original checkpoint history was not verified in the native runtime')
         receipt = {'ticket': work['ticket'], 'segment': segment, 'source_sha': work['source_sha'],
                    'physics_hash': design['physics_hash'], 'batch_id': batch['id'], 'run_id': run['id'],
                    'job_name': attempt['job_name'], 'input_hash': run['input_hash'],
                    'runtime_hash': runtime_hash, 'cpus': 4,
                    'files': checkpoint_inventory(raw, attempt['job_name']),
+                   'orderly_checkpoint': history_check,
                    'stop_acknowledgement': json.loads(acknowledgement.read_text())}
         write_json(marker, receipt)
         outcome = 'checkpoint'

@@ -6,6 +6,16 @@ import subprocess
 from pathlib import Path
 
 
+def verify_solver_cleanup(log: Path):
+    """A stop acknowledgment does not certify that the native solver closed cleanly."""
+    markers = ('segmentation fault', 'double free', 'corrupted unsorted', 'corruption (',
+               'invalid pointer', 'corrupted double-linked', 'signal 6', 'signal 11')
+    with log.open(errors='replace') as stream:
+        for line in stream:
+            if any(marker in line.lower() for marker in markers):
+                raise RuntimeError('Checkpoint stop crashed during solver cleanup; inspect ' + str(log))
+
+
 def verify_checkpoint_history(raw: Path, job_name: str, executable: str, spec: dict):
     from . import solver
     from .data import history_continuity

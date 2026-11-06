@@ -370,6 +370,9 @@ class Engine:
         if spool is not None:
             consume_spool(spool, self.field_sink)
         if stopped_at is not None or self._stopping(r):
+            if phase == 'solving' and self.continuation_control is not None:
+                from .cloud_continuation import verify_solver_cleanup
+                verify_solver_cleanup(logs / (phase + '.log'))
             raise Interrupted("Đã dừng; tiếp tục sẽ tạo attempt mới")
         log_text = solver.tail(logs / (phase + ".log"), 12000)
         if re.search(
