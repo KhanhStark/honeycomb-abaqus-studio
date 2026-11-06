@@ -12,9 +12,8 @@ HARNESS = r'''
 #include <stdio.h>
 void vexternaldb_(const int *, int *, const int *, double *, const int *);
 static int thread_id = 0;
-static int exit_calls = 0;
 int get_thread_id_(void) { return thread_id; }
-void xplb_exit_(void) { ++exit_calls; }
+void vgetrank_(int *rank) { *rank = 0; }
 int main(void) {
     int op = 0, ni = 7, nr = 3;
     int integers[7] = {9, 4, 1, 256, 0, 0, 0};
@@ -26,7 +25,7 @@ int main(void) {
     thread_id = 1;
     for (int i = 0; i < 256; ++i)
         vexternaldb_(&op, integers, &ni, reals, &nr);
-    assert(integers[5] == 0 && exit_calls == 0);
+    assert(integers[5] == 0 && integers[4] == 0);
     thread_id = 0;
     for (int i = 0; i < 256; ++i)
         vexternaldb_(&op, integers, &ni, reals, &nr);
@@ -40,8 +39,8 @@ int main(void) {
     reals[1] = .0101;
     vexternaldb_(&op, integers, &ni, reals, &nr);
     assert(integers[5] == 0 && "restart must be cleared before termination");
-    assert(integers[4] == 0 && exit_calls == 1);
-    /* The exit stub returns so duplicate callbacks can be checked. */
+    assert(integers[4] == 2);
+    /* The final zero-time increment must not request another restart. */
     integers[4] = 0;
     integers[3] = 257;
     reals[2] = 0.;
@@ -51,7 +50,6 @@ int main(void) {
     op = 4;
     vexternaldb_(&op, integers, &ni, reals, &nr);
     assert(integers[4] == 0 && "termination was requested again during shutdown");
-    assert(exit_calls == 1);
     return 0;
 }
 '''

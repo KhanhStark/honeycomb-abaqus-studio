@@ -28,6 +28,7 @@ def execution_runtime():
         return {}, [{"status": "blocked_environment", "message": "Chưa có lượt thử Linux hoàn tất solver và mở lại ODB."}]
     return {
         "mode": "native_container", "release": "2020", "python": data["python"],
+        "continuation_parallel_mode": "MPI", "continuation_domains": 4,
         "installer_sha256": "d0b227290b5f62ea826b08c18bde222417817fc0d04b91abb0072cb52ebe43ad",
         "production_runtime_qualified": False,
         "media_publisher_authenticity_verified": data.get("media_publisher_authenticity_verified", False),

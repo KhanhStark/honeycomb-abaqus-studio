@@ -44,6 +44,10 @@ def native_runtime(root, *, continuation=False):
             # Public utility symbols resolve from the running Explicit solver.
             # Avoid copying its transitive C++ libraries into the user library.
             stream.write("link_sl=['g++','-shared','-Wl,--as-needed','%E','-Wl,-soname,%U','-o','%U','%F','%A','%L','%B']\n")
+            # MPI avoids Abaqus 2020's threaded fatal-stop cleanup corruption.
+            # All children stay in this container; no ssh daemon is needed.
+            stream.write("import os\nmp_mode=MPI\nmp_file_system=(SHARED,SHARED)\n"
+                         "os.environ['MPI_REMSH']='/probe/mpi_local_shell.py'\n")
     settings = {
         "HONEYCOMB_IMPACT_ROOT": str(root), "HONEYCOMB_LICENSE_HOST": host,
         "HONEYCOMB_ADAPTERS": str(ADAPTERS), "HONEYCOMB_LICENSE_CONFIG": str(config),

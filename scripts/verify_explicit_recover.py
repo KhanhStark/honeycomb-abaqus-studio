@@ -129,8 +129,14 @@ def create_checkpoint(executable, control, reader, *, damage=False):
         for p in ROOT.glob('*.lck'):
             p.unlink()
         subprocess.run(solver.command(str(executable), 'python', str(reader), str(ROOT / 'history-before.json')), cwd=ROOT, check=True, timeout=120)
+        stopped = json.loads((ROOT / 'continuation-stop-ack.json').read_text())['simulation_time_s']
+        original = json.loads((ROOT / 'history-before.json').read_text())
+        integrity = history_continuity(original, {'duration': stopped, 'history_intervals': stopped / .00006})
+        if not integrity['passed']:
+            raise RuntimeError('Checkpoint lost original history before recover: ' + json.dumps(integrity))
         shutil.copy2(ROOT / 'recover_probe.sta', ROOT / 'before.sta')
-        write_json(ROOT / 'checkpoint-receipt.json', {**receipt, 'before': before})
+        write_json(ROOT / 'checkpoint-receipt.json', {**receipt, 'before': before,
+                   'checkpoint_history_integrity': integrity})
 
 
 def complete_checkpoint(executable, control, reader, *, cross_runner=False, damage=False):

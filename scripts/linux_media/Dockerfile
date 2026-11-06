@@ -17,6 +17,8 @@ ARG MODEL_UID=1001
 RUN if ! getent passwd "$MODEL_UID"; then useradd -u "$MODEL_UID" -m modelrunner; fi
 COPY tui_probe.py /probe/tui_probe.py
 COPY entrypoint.py /probe/entrypoint.py
+COPY mpi_local_shell.py /probe/mpi_local_shell.py
+RUN chmod 755 /probe/mpi_local_shell.py
 ENV DSY_Force_OS=linux_a64
 ENV HOME=/home/abaqus
 USER 1000:1000

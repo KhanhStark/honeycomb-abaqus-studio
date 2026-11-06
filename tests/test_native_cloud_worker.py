@@ -42,6 +42,8 @@ def test_native_context_restricts_network_and_cleans_private_config(tmp_path, mo
             if continuation:
                 assert "'g++','-shared'" in config and 'ifort' not in config
                 assert "'%E'" in config  # Abaqus uses this to retain required archive symbols.
+                assert 'mp_mode=MPI' in config
+                assert "os.environ['MPI_REMSH']='/probe/mpi_local_shell.py'" in config
             assert os.environ["HONEYCOMB_IMPACT_ROOT"] == str((tmp_path / "results").resolve())
             raise RuntimeError("interrupted")
     assert not (tmp_path / "cloud-private/abaqus_v6.env").exists()
