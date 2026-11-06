@@ -29,13 +29,14 @@ class RearMetrics(object):
 
     def frame(self, frame, total_time):
         outputs = frame.fieldOutputs
-        if any(name not in outputs for name in ('PEEQ', 'SDEG', 'JCCRT', 'TEMP')):
+        names = outputs.keys()
+        if any(name not in names for name in ('PEEQ', 'SDEG', 'JCCRT', 'TEMP')):
             self.complete = False
-        if 'U' not in outputs:
+        if 'U' not in names:
             self.complete = False
             return
-        # Abaqus 2017 Repository supports membership and indexing, not dict.get.
-        status = outputs['STATUS'] if 'STATUS' in outputs else None
+        # Repository membership can raise for missing fields; query its key list.
+        status = outputs['STATUS'] if 'STATUS' in names else None
         if status is None:
             self.complete = False
             return

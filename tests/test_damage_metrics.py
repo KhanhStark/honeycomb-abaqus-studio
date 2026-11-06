@@ -9,7 +9,12 @@ class OdbRepository:
         self.values = values
 
     def __contains__(self, key):
-        return key in self.values
+        if key not in self.values:
+            raise KeyError(key)
+        return True
+
+    def keys(self):
+        return list(self.values)
 
     def __getitem__(self, key):
         return self.values[key]

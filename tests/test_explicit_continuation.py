@@ -1,3 +1,4 @@
+import ast
 import importlib.util
 import io
 import json
@@ -18,6 +19,30 @@ def raw_files(tmp_path):
     for ext in ('abq', 'pac', 'res', 'sel', 'odb'):
         (tmp_path / ('hc.' + ext)).write_bytes(ext.encode())
     return checkpoint_inventory(tmp_path, 'hc')
+
+
+def test_recovery_reader_skips_absent_abaqus_fields(tmp_path, monkeypatch):
+    import sys
+
+    class Repository(dict):
+        def __contains__(self, name):
+            if not dict.__contains__(self, name):
+                raise KeyError(name)
+            return True
+
+    fields = Repository(U=SimpleNamespace(values=[SimpleNamespace(dataDouble=(1., 2., 3.))]))
+    frame = SimpleNamespace(frameValue=.02, fieldOutputs=fields)
+    odb = SimpleNamespace(steps={'Test': SimpleNamespace(historyRegions={}, frames=[frame])}, close=lambda: None)
+    monkeypatch.setitem(sys.modules, 'odbAccess', SimpleNamespace(openOdb=lambda *args, **kwargs: odb))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, 'argv', ['reader.py', str(tmp_path / 'history.json')])
+    path = Path(__file__).parents[1] / 'scripts/verify_explicit_recover.py'
+    source = next(node.value for node in ast.walk(ast.parse(path.read_text(encoding='utf-8')))
+                  if isinstance(node, ast.Constant) and isinstance(node.value, str)
+                  and node.value.startswith('from odbAccess import openOdb'))
+    exec(compile(source, 'native-recovery-reader', 'exec'), {})
+    states = json.loads((tmp_path / 'history.json.state.json').read_text())
+    assert states == [{'time': .02, 'fields': {'U': [[1., 2., 3.]]}}]
 
 
 def test_recovery_rejects_corruption_or_different_input(tmp_path):

@@ -84,13 +84,13 @@ def export(odb, config):
                 displacement = [None] * len(lookup)
                 stress = [None] * len(element_lookup)
                 plastic = [None] * len(element_lookup)
-                if 'U' in frame.fieldOutputs:
+                if 'U' in frame.fieldOutputs.keys():
                     for value in frame.fieldOutputs['U'].getSubset(region=inst).values:
                         index = lookup.get(value.nodeLabel)
                         if index is not None:
                             displacement[index] = [finite(v) for v in components(value)]
                 for field_name, target in [('S', stress), ('PEEQ', plastic)]:
-                    if field_name not in frame.fieldOutputs:
+                    if field_name not in frame.fieldOutputs.keys():
                         continue
                     for value in frame.fieldOutputs[field_name].getSubset(region=inst).values:
                         index = element_lookup.get(value.elementLabel)

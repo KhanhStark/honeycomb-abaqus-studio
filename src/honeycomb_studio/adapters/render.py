@@ -40,7 +40,7 @@ try:
         index = min(range(len(frames)), key=lambda i: abs(frames[i].frameValue - target))
         vp.odbDisplay.setFrame(step=0, frame=index)
         for var in ["U", "S", "PEEQ"]:
-            if var not in frames[index].fieldOutputs:
+            if var not in frames[index].fieldOutputs.keys():
                 missing.append({"field": var, "frame": index})
                 continue
             kwargs = {"variableLabel": var, "outputPosition": NODAL if var == "U" else INTEGRATION_POINT}

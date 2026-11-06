@@ -13,7 +13,7 @@ def check(path):
         for frame in step.frames:
             row = {'time_s': frame.frameValue}
             for name in ('SDEG', 'JCCRT', 'STATUS', 'PEEQ', 'TEMP'):
-                if name not in frame.fieldOutputs:
+                if name not in frame.fieldOutputs.keys():
                     raise ValueError('Missing material test field ' + name)
                 values = [float(v.data) for v in frame.fieldOutputs[name].values]
                 row[name] = (min(values) if name == 'STATUS' else max(values)) if values else None

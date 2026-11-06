@@ -77,7 +77,7 @@ for step, obj in odb.steps.items():
     for frame in obj.frames:
         fields={}
         for name in ('U','V','PEEQ','SDEG','JCCRT','STATUS','TEMP'):
-            if name not in frame.fieldOutputs: continue
+            if name not in frame.fieldOutputs.keys(): continue
             values=[]
             for v in frame.fieldOutputs[name].values:
                 try: data=v.dataDouble
