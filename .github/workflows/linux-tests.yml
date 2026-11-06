@@ -16,7 +16,7 @@ jobs:
       - uses: astral-sh/setup-uv@v10.3.0
         with:
           enable-cache: true
-      - run: uv sync --locked
+      - run: uv sync --locked --extra cloud --extra campaign
       - run: uv run --locked ruff check src tests scripts
       - run: uv run --locked ty check src/honeycomb_studio --exclude src/honeycomb_studio/adapters
       - name: Test engine orchestration and data (no licensed Abaqus available)
