@@ -46,8 +46,24 @@ extern "C" void vexternaldb_(const int *op, int *i, const int *ni,
     }
 }
 '''
+LOCAL_SHELL = '''#!/usr/bin/python3
+"""Launch MPI children only inside this container, using ssh argument conventions."""
+import os
+import socket
+import sys
+args = sys.argv[1:]
+while args and args[0].startswith('-'):
+    option = args.pop(0)
+    if option == '-l':
+        args.pop(0)
+    elif option != '-n':
+        raise SystemExit('Unsupported MPI local-shell option')
+if len(args) < 2 or args.pop(0) not in (socket.gethostname(), 'localhost', '127.0.0.1'):
+    raise SystemExit('MPI local shell refuses another host')
+os.execv('/bin/sh', ['sh', '-c', ' '.join(args)])
+'''
 CRASHES = ('segmentation fault', 'double free', 'corrupted unsorted',
-           'corruption (', 'invalid pointer', 'signal 6', 'signal 11')
+           'corruption (', 'invalid pointer', 'corrupted double-linked', 'signal 6', 'signal 11')
 
 
 def main():
@@ -59,16 +75,27 @@ def main():
     with native_runtime(ROOT, continuation=True) as executable:
         subprocess.run(solver.command(str(executable), 'cae', 'noGUI=' + str(build / 'build.py')),
                        cwd=build, check=True, timeout=120)
-        cases = [('tls_threads4', 4, MINIMAL.replace('static int stopped', 'static __thread int stopped'), 'THREADS'),
-                 ('setup_threads4', 4, MINIMAL.replace('*op == 4', '*op == 2'), 'THREADS'),
-                 ('utility_threads4', 4, UTILITY, 'THREADS'),
-                 ('utility_threads1', 1, UTILITY, 'THREADS')]
-        for name, cpus, source, mode in cases:
+        local_shell = ROOT / 'mpi_local_shell.py'
+        local_shell.write_text(LOCAL_SHELL)
+        local_shell.chmod(0o755)
+        main_thread = '#include <SMAAspUserSubroutines.h>\n' + MINIMAL.replace(
+            'static int stopped = 0;', 'static int stopped = 0;\n    if (get_thread_id() != 0) return;')
+        main_utility = '#include <SMAAspUserSubroutines.h>\n' + UTILITY.replace(
+            'static int pending = 0;', 'static int pending = 0;\n    if (get_thread_id() != 0) return;')
+        cases = [('minimal_mpi4_local', 4, MINIMAL, 'MPI', []),
+                 ('main_threads4', 4, main_thread, 'THREADS', []),
+                 ('main_utility_threads4', 4, main_utility, 'THREADS', []),
+                 ('loop_threads4', 4, MINIMAL, 'THREADS', ['parallel=loop'])]
+        for name, cpus, source, mode, extra in cases:
             folder = ROOT / name
             folder.mkdir()
             shutil.copy2(build / 'recover_probe.inp', folder)
-            (folder / 'abaqus_v6.env').write_text('verbose=ON\n')
-            args = ['job=recover_probe', 'cpus=' + str(cpus), 'double=both', 'interactive']
+            environment = 'verbose=ON\n'
+            if mode == 'MPI':
+                environment += ("import os\nos.environ['MPI_REMSH']=" + repr(str(local_shell)) +
+                                '\nmp_file_system=(SHARED,SHARED)\n')
+            (folder / 'abaqus_v6.env').write_text(environment)
+            args = ['job=recover_probe', 'cpus=' + str(cpus), 'double=both', 'interactive', *extra]
             if mode:
                 args.append('mp_mode=' + mode)
             if source:
@@ -84,7 +111,7 @@ def main():
                 row = dict(case=name, exit_code=process.returncode,
                            crash_markers=[marker for marker in CRASHES if marker in text],
                            stop_requested='exit as per user request in vexternaldb' in text,
-                           utility_called='xplb_exit' in text,
+                           utility_called='analysis is terminated from user subroutine' in text,
                            state=solver.sta_progress(folder / 'recover_probe.sta', .06))
             except subprocess.TimeoutExpired:
                 row = dict(case=name, timeout=True)
