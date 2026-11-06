@@ -85,6 +85,41 @@ def test_controller_relay_stops_when_blocked_disabled_or_already_queued():
     assert len(dispatched) == 1
 
 
+def test_controller_refills_a_released_slot_and_counts_its_own_actions_job(monkeypatch):
+    import sys
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    sys.path.insert(0, str(Path(__file__).parents[1] / 'scripts'))
+    import campaign_controller as controller
+
+    manifest = campaign_manifest()
+    owner = manifest['designs'][0]['owner']
+    manifest.update(enabled=True, phase='production', capacity_stage=160,
+                    workflow_capacity=160, license_capacity=128)
+    jobs = [{'status': 'in_progress', 'campaign_solver': True} for _ in range(19)]
+    jobs.append({'status': 'in_progress', 'campaign_solver': False})
+    dispatched = []
+
+    def reserve(_manifest, row):
+        dispatched.append(row['id'])
+        row['status'] = 'dispatching'
+
+    monkeypatch.setattr(controller, 'page_jobs', lambda _github, **_kwargs: list(jobs))
+    monkeypatch.setattr(controller, 'admission', lambda _manifest, _row: True)
+    monkeypatch.setattr(controller, 'Dispatcher', lambda *_args: SimpleNamespace(reserve=reserve))
+    app = SimpleNamespace(repository=lambda _: object())
+    controller.fill_owner_slots(None, app, manifest, manifest['designs'], 160, owner)
+    assert not dispatched
+    jobs.pop(0)  # A real worker finishes while the controller still occupies one Actions slot.
+    controller.fill_owner_slots(None, app, manifest, manifest['designs'], 160, owner)
+    assert len(dispatched) == 1
+    controller.fill_owner_slots(None, app, manifest, manifest['designs'], 160, owner)
+    assert len(dispatched) == 1  # The durable reservation consumes the released slot.
+    report = controller.status_report(manifest)
+    assert report['workflow_capacity'] == 160 and report['solver_license_capacity'] == 128
+
+
 def test_failed_eight_ms_time_gate_does_not_allocate_sixteen_ms():
     manifest = campaign_manifest()
     manifest.update(phase='time', execution_scope='full', selected_velocity_m_s=8., trial_duration_s=.008)

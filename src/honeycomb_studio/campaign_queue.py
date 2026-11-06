@@ -158,6 +158,12 @@ def available_slots(capacity, owner_jobs, reserved=0):
     return max(0, min(min(20, capacity) - solvers - reserved, 20 - len(active) - reserved))
 
 
+def dispatch_capacity(manifest):
+    """Bound Actions admission separately from FlexNet's native token queue."""
+    ceiling = manifest.get('workflow_capacity', manifest.get('license_capacity', 0))
+    return max(0, min(manifest.get('capacity_stage', 8), ceiling, 160))
+
+
 def ramp_capacity(manifest):
     """Probe the next stage only after successful, overlapping solver and archive evidence."""
     stage = manifest.get('capacity_stage', 8)
@@ -174,7 +180,8 @@ def ramp_capacity(manifest):
     if peak >= stage and len(rows) >= stage:
         stages = (8, 20, 40, 80, 160)
         next_stage = next((level for level in stages if level > stage), stage)
-        manifest['capacity_stage'] = min(next_stage, manifest['license_capacity'])
+        ceiling = manifest.get('workflow_capacity', manifest['license_capacity'])
+        manifest['capacity_stage'] = min(next_stage, ceiling, 160)
     return manifest
 
 

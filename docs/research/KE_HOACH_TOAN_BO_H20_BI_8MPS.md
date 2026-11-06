@@ -24,8 +24,12 @@ Cập nhật thực thi ngày 07/11/2026: **60 OFAT**, gồm 15 mức/biến kh�
 tham chiếu; **259 LHS phát triển**, 1 tham chiếu và 80 test khóa = **400**.
 Qualification phục hồi và hạ tầng cả tám tài khoản đã đạt trên worker source
 `f7d7e93cb0d97f8c99246a0a904d5d173a19a70d`. Đã bật thu thập song song
-và 16 job (2 runner độc lập/tài khoản). Controller tự gửi lượt điều phối tiếp
-sau 3 phút chờ, có khóa concurrency và không gửi trùng khi đã có lượt chờ;
+và sau đó nâng lên **160 slot Actions (20/tài khoản)** theo yêu cầu khẩn.
+160 slot bao gồm job điều phối; khi controller chạy, tối đa 159 worker FE.
+Pool FlexNet được ghi riêng là 128 lượt solver 4 CPU theo dữ liệu hiện có;
+các analysis có thể chờ token trong hàng đợi giấy phép mặc định của Abaqus.
+Controller đối soát và lấp slot tám tài khoản song song, tự gửi lượt kế tiếp
+sau 30 giây chờ, có khóa concurrency và không gửi trùng khi đã có lượt chờ;
 ngừng nối tiếp khi bị chặn, tắt hoặc hoàn tất. Số mẫu hoàn tất lấy từ receipt
 đã kiểm tra, không suy từ việc gửi workflow.
 

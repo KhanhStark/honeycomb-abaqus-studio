@@ -6,6 +6,7 @@ import os
 import time
 import uuid
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 
 from honeycomb_studio.campaign import OWNERS, campaign_manifest, progress
 from honeycomb_studio.campaign_acceptance import import_evidence
@@ -18,6 +19,7 @@ from honeycomb_studio.campaign_queue import (
     apply_outcome,
     available_slots,
     campaign_key,
+    dispatch_capacity,
     page_jobs,
     ramp_capacity,
     ticket_key,
@@ -56,7 +58,15 @@ def persist(store, manifest):
 
 
 def reconcile(store, manifest, app):
+    with ThreadPoolExecutor(max_workers=len(OWNERS)) as pool:
+        list(pool.map(lambda owner: reconcile_owner(store, manifest, app, owner), OWNERS))
+    return manifest
+
+
+def reconcile_owner(store, manifest, app, owner):
     for row in manifest['designs'] + manifest['pilot_designs']:
+        if row['owner'] != owner:
+            continue
         if row['status'] == 'publication_pending':
             reconcile_publication(manifest, row, app)
             continue
@@ -158,7 +168,8 @@ def status_report(manifest):
     report.update(training_configurations=len(samples), archived_configurations=len(done),
                   percent=100 * len(done) / max(1, len(samples)))
     measured = [r.get('execution_wall_seconds') for r in done if r.get('execution_wall_seconds')]
-    capacity = min(manifest.get('license_capacity', 0), manifest.get('capacity_stage', 8))
+    capacity = dispatch_capacity(manifest)
+    report.update(workflow_capacity=capacity, solver_license_capacity=manifest.get('license_capacity', 0))
     report['eta_seconds'] = (math.ceil((len(samples) - len(done)) / capacity) * sum(measured) / len(measured)
                              if measured and capacity else None)
     report['errors'] = [{'id': r['id'], 'owner': r['owner'], 'status': r['status'], 'error': r.get('error')}
@@ -194,6 +205,26 @@ def reconcile_analysis(manifest, app):
         dispatch_analysis(app, manifest)
 
 
+def fill_owner_slots(store, app, manifest, rows, capacity, owner):
+    github = app.repository(owner + '/honeycomb-abaqus-studio')
+    index = OWNERS.index(owner)
+    owner_budget = capacity // 8 + (index < capacity % 8)
+    if not owner_budget:
+        return owner, {}
+    reserved = sum(r['owner'] == owner and r['status'] == 'dispatching' and not r.get('workflow_run_id')
+                   for r in manifest['designs'] + manifest['pilot_designs'])
+    warnings = []
+    slots = available_slots(owner_budget, page_jobs(github, warnings=warnings), reserved)
+    pending = [r for r in rows if r['owner'] == owner
+               and r['status'] in ('pending', 'checkpoint', 'solver_retry', 'preparation_retry')
+               and admission(manifest, r)]
+    dispatcher = Dispatcher(store, app)
+    for row in pending[:slots]:
+        dispatcher.reserve(manifest, row)
+    return owner, {'scope': 'selected repository and visible public repositories; GitHub enforces shared owner quota',
+                   'warnings': warnings}
+
+
 def tick(store, app, identity):
     manifest = reconcile(store, store.load(identity), app)
     manifest = ingest_evidence(store, manifest, app)
@@ -209,26 +240,13 @@ def tick(store, app, identity):
         persist(store, manifest)
         dispatch_analysis(app, manifest)
     persist(store, manifest)
-    dispatcher = Dispatcher(store, app)
-    capacity = min(manifest.get('capacity_stage', 8), manifest.get('license_capacity', 0), 160)
+    capacity = dispatch_capacity(manifest)
     if manifest.get('enabled') and capacity:
         rows = dispatch_candidates(manifest)
-        for i, owner in enumerate(OWNERS):
-            github = app.repository(owner + '/honeycomb-abaqus-studio')
-            owner_budget = capacity // 8 + (i < capacity % 8)
-            if not owner_budget:
-                continue
-            reserved = sum(r['owner'] == owner and r['status'] == 'dispatching' and not r.get('workflow_run_id')
-                           for r in manifest['designs'] + manifest['pilot_designs'])
-            warnings = []
-            slots = available_slots(owner_budget, page_jobs(github, warnings=warnings), reserved)
-            manifest.setdefault('quota_observation', {})[owner] = {
-                'scope': 'selected repository and visible public repositories; GitHub enforces shared owner quota',
-                'warnings': warnings}
-            pending = [r for r in rows if r['owner'] == owner and r['status'] in ('pending', 'checkpoint', 'solver_retry', 'preparation_retry')
-                       and admission(manifest, r)]
-            for row in pending[:slots]:
-                dispatcher.reserve(manifest, row)
+        with ThreadPoolExecutor(max_workers=len(OWNERS)) as pool:
+            observations = pool.map(lambda owner: fill_owner_slots(store, app, manifest, rows, capacity, owner), OWNERS)
+            for owner, observation in observations:
+                manifest.setdefault('quota_observation', {})[owner] = observation
     if manifest.get('quota_observation'):
         store.catalog.update(campaign_key(identity) + '/meta',
                              lambda old: {**old, 'quota_observation': manifest['quota_observation']})

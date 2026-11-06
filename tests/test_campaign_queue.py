@@ -8,6 +8,7 @@ from honeycomb_studio.campaign_queue import (
     apply_outcome,
     available_slots,
     claim,
+    dispatch_capacity,
     page_jobs,
     ramp_capacity,
 )
@@ -99,6 +100,17 @@ def test_quota_counts_all_active_jobs_and_reserved_dispatches():
     assert available_slots(20, jobs, reserved=2) == 4
     assert available_slots(8, jobs) == 0
     assert available_slots(200, [], reserved=1) == 19
+
+
+def test_workflow_capacity_can_fill_160_actions_slots_with_a_smaller_license_pool():
+    manifest = {'capacity_stage': 160, 'workflow_capacity': 160, 'license_capacity': 128}
+    assert dispatch_capacity(manifest) == 160
+    assert manifest['license_capacity'] == 128
+    controller = {'status': 'in_progress', 'campaign_solver': False}
+    assert sum(available_slots(20, [controller] if owner == 0 else []) for owner in range(8)) == 159
+    assert dispatch_capacity({'capacity_stage': 160, 'license_capacity': 128}) == 128
+    assert dispatch_capacity({**manifest, 'workflow_capacity': 200}) == 160
+    assert dispatch_capacity({**manifest, 'capacity_stage': 0}) == 0
 
 
 def test_controller_does_not_consume_the_solver_budget_but_still_uses_owner_quota():
