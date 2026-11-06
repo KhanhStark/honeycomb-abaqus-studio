@@ -198,8 +198,10 @@ def freeze(manifest, velocity, duration, mesh_factor, evidence):
     required = ("material", "mesh", "time", "damage_sensitivity", "archive_restore")
     if any(evidence.get(k, {}).get("passed") is not True for k in required):
         raise ValueError("Pilot gates are not complete")
-    if duration not in (.004, .008, .012) or mesh_factor not in (1., .75, .5):
-        raise ValueError("Unapproved duration or mesh factor")
+    if velocity != 8. or duration != INITIAL_DURATION_S:
+        raise ValueError("The fixed campaign requires 8 m/s and 8 ms")
+    if mesh_factor not in (1., .75, .5):
+        raise ValueError("Unapproved mesh factor")
     if manifest.get("frozen") or not manifest.get("source_sha"):
         raise ValueError("Freeze requires source SHA and an unfrozen campaign")
     for row in manifest["designs"]:

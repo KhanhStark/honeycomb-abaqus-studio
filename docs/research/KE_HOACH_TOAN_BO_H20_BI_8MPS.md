@@ -2,6 +2,8 @@
 
 Ngày lập: 06/11/2026, múi giờ Asia/Bangkok.
 
+Cập nhật theo lệnh thực thi: **60 OFAT**, gồm 15 mức/biến không trùng tham chiếu; **259 LHS phát triển**. Đã được phép triển khai toàn bộ khi lần lượt đạt các cổng kiểm chứng. Tại thời điểm chuẩn bị, controller vẫn khóa do phép thử checkpoint/recover chưa đạt; việc cho phép thực thi không thay thế bằng chứng kiểm chứng.
+
 ## 1. Phạm vi và đầu ra
 
 Kế hoạch bao phủ kiểm chứng mô hình, pilot, **400 cấu hình ban đầu**, tối đa **80 cấu hình bổ sung**, và **20 cấu hình xác nhận tối ưu**. Tổng dữ liệu chính là **420–500 cấu hình**, chưa tính kiểm tra số và retry. Đây là kế hoạch toàn chiến dịch; việc lập tài liệu và xuất danh sách không bật bộ điều phối hoặc gửi job.
@@ -31,16 +33,18 @@ Thông số vật liệu, nhiệt, lưới xuất phát và tần suất ghi gi�
 
 ## 3. Bốn biến khảo sát
 
-| Biến | Trường | Khoảng | Tham chiếu | OFAT: 10 mức gồm hai đầu mút, bước |
+| Biến | Trường | Khoảng | Tham chiếu | OFAT: bước phía dưới / trên tham chiếu |
 |---|---|---:|---:|---:|
-| Góc delta | reentrant_delta_deg | 25–45° | 35° | 20/9 ≈ 2,222222° |
-| Chiều dày lá lõi | foil | 0,035–0,115 mm | 0,0635 mm | 0,08/9 ≈ 0,008888889 mm |
-| Kích thước ô | cell_size | 4,5–8,2 mm | 6,35 mm | 3,7/9 ≈ 0,411111111 mm |
-| Chiều cao ô lõm | reentrant_cell_height | 3–7 mm | 5 mm | 4/9 ≈ 0,444444444 mm |
+| Góc delta | reentrant_delta_deg | 25–45° | 35° | 1,25° / 1,428571° |
+| Chiều dày lá lõi | foil | 0,035–0,115 mm | 0,0635 mm | 0,0035625 / 0,007357143 mm |
+| Kích thước ô | cell_size | 4,5–8,2 mm | 6,35 mm | 0,23125 / 0,264285714 mm |
+| Chiều cao ô lõm | reentrant_cell_height | 3–7 mm | 5 mm | 0,25 / 0,285714286 mm |
 
 Giữ đầy đủ độ chính xác trong CSV; số trong bảng được làm tròn để đọc. Chiều cao ô lõm là biến hình học ô, khác chiều cao toàn bộ lõi H20. Theta không khảo sát; reentrant_indent được suy ra, không thay độc lập. Mọi hình học phải thỏa khe ô > max(8 × foil, 0,5 mm).
 
 OFAT thay một biến mỗi lượt. Latin Hypercube thay phối hợp bốn biến để học tương tác; không có bước nhảy đều. Lấy mẫu có loại miền hình học không hợp lệ, loại trùng theo đầu vào thực tế. Seed phát triển 20261106, kiểm tra 20261107.
+
+Mỗi biến có 8 mức phía dưới và 7 mức phía trên tham chiếu, gồm hai đầu miền và loại chính giá trị tham chiếu. Cấu hình tham chiếu được tính một lần riêng, nên 60 OFAT đều là cấu hình vật lý khác nhau.
 
 ## 4. Trình tự chạy
 
@@ -81,8 +85,8 @@ Cửa sổ đáp ứng nghiên cứu: chuyển vị cực đại mặt sau của
 | Nhóm | Số cấu hình | Phương pháp |
 |---|---:|---|
 | Tham chiếu | 1 | Delta35°, foil0,0635, cell6,35, chiều cao ô5 |
-| OFAT phát triển | 40 | 10 mức cho từng biến, giữ ba biến còn lại ở tham chiếu |
-| LHS phát triển | 279 | Phủ miền khả thi, thay phối hợp bốn biến |
+| OFAT phát triển | 60 | 15 mức cho từng biến, giữ ba biến còn lại ở tham chiếu |
+| LHS phát triển | 259 | Phủ miền khả thi, thay phối hợp bốn biến |
 | Kiểm tra giữ riêng | 80 | LHS độc lập; không dùng để chọn mô hình, siêu tham số hoặc điểm bổ sung |
 | **Tổng** | **400** | **320 phát triển + 80 kiểm tra** |
 

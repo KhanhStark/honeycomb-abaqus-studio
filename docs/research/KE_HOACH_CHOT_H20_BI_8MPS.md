@@ -6,7 +6,7 @@ Kế hoạch cho toàn bộ chiến dịch và danh sách 400 cấu hình: [Kế
 
 ## 1. Phạm vi thực hiện hiện tại
 
-Chuẩn bị và chạy **3 pilot tại 8 m/s, thời gian 8 ms**, sau đó dừng để đánh giá. Bộ 400 cấu hình chính vẫn chờ quyết định sau pilot. Không tự tăng vận tốc, kéo dài thời gian hoặc chuyển sang chạy dữ liệu chính.
+Lệnh thực thi mới cho phép toàn chiến dịch theo các cổng trong kế hoạch toàn bộ: kiểm chứng → **3 pilot tại 8 m/s, thời gian 8 ms** → hội tụ/độ nhạy → audit → dữ liệu chính. Controller chỉ chuyển tiếp khi có đủ bằng chứng đạt; nếu đáp ứng không phù hợp hoặc kiểm chứng thất bại thì dừng điều tra. Không tự tăng vận tốc hay đổi thời gian dữ liệu chính.
 
 ## 2. Cấu hình cố định
 
@@ -99,7 +99,7 @@ Chiều cao ô lõm khác chiều cao toàn bộ lõi H20. Theta không khảo s
 
 | Nhóm | Số cấu hình | Phương pháp |
 |---|---:|---|
-| Phát triển | 320 | 1 tham chiếu + 40 OFAT (10 mức/biến) + 279 Latin Hypercube hợp lệ |
+| Phát triển | 320 | 1 tham chiếu + 60 OFAT (15 mức/biến, không trùng tham chiếu) + 259 Latin Hypercube hợp lệ |
 | Kiểm tra giữ riêng | 80 | Latin Hypercube độc lập; không dùng chọn mô hình/điểm bổ sung |
 | Bổ sung | Tối đa 80 | 40 bất định cao + 24 gần Pareto + 16 miền thưa |
 | Xác nhận tối ưu | 20 | Cấu hình mới dọc Pareto, xác nhận bằng FE |
@@ -125,4 +125,4 @@ Một cấu hình chỉ có một job solver đang tính tại một thời đi�
 
 Bàn giao tập trung: samples.csv, impact_history.csv từng mẫu, manifest/đơn vị/checksum, khối lượng, vật liệu/lưới/thời gian, trạng thái solver và chất lượng số, INP/ODB/log/checkpoint, nguồn repo và lịch sử retry. Kết quả dự đoán/Pareto/FE xác nhận đi cùng báo cáo cuối.
 
-**Điểm dừng bắt buộc của đợt hiện tại: hoàn thành và lưu xác minh 3 pilot, sau đó báo cáo; 400 cấu hình chính vẫn bị khóa.**
+**400 cấu hình chính chỉ được mở sau khi pilot, hội tụ, độ nhạy và audit đạt đầy đủ; kiểm chứng thất bại phải dừng điều tra.**

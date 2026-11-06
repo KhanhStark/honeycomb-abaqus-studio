@@ -46,8 +46,8 @@ def main():
         classifier, failure_report = rear_failure_model(manifest)
         stability = pareto_diagnostics(manifest, fitted[report['winner']], manifest.get('pareto_diagnostics'))
         manifest.update(pareto_diagnostics=stability, failure_report=failure_report)
-        allocated = any(r['role'] == 'adaptive' for r in manifest['designs'])
-        if not allocated and (not report['passed'] or not stability['passed']):
+        allocated = sum(r['role'] == 'adaptive' for r in manifest['designs'])
+        if allocated + 20 <= min(80, manifest.get('max_adaptive', 80)) and (not report['passed'] or not stability['passed']):
             manifest['designs'].extend(adaptive_designs(manifest, fitted))
             manifest.update(phase='adaptive', initial_cv_report=report)
         elif not report['passed'] or not stability['passed']:

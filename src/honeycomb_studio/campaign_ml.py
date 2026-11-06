@@ -83,9 +83,9 @@ def fit_surrogates(manifest):
 def core_mass(point):
     delta, foil, width, height = point
     indent = height / 2 * np.tan(np.deg2rad(delta))
-    walls = network(100., 15., width, height, indent, 0., 0., .05)
-    weighted_length = sum(np.hypot(b[0] - a[0], b[1] - a[1]) * (2 if abs(a[1] - b[1]) < 1.e-7 else 1)
-                          for a, b in walls)
+    walls = network(100., 20., width, height, indent, 0., 0., .05)
+    weighted_length = sum(np.hypot(b[0] - a[0], b[1] - a[1]) * (2 if double else 1)
+                          for a, b, double in walls)
     return float(weighted_length * 100 * foil * 2700.e-9)
 
 
@@ -107,7 +107,7 @@ def new_designs(manifest, points, role):
         key = digest(model.resolved())
         if key in used:
             continue
-        i = len(rows)
+        i = sum(r['role'] == role for r in manifest['designs']) + len(rows)
         rows.append(record(model, role, i + 1, OWNERS[i % 8], list(BOUNDS)))
         used.add(key)
     return rows
@@ -116,12 +116,15 @@ def new_designs(manifest, points, role):
 def adaptive_designs(manifest, fitted):
     from pymoo.util.nds.non_dominated_sorting import NonDominatedSorting
 
-    if any(r["role"] == "adaptive" for r in manifest["designs"]):
-        raise ValueError("Adaptive budget already allocated")
+    previous = [r for r in manifest['designs'] if r['role'] == 'adaptive']
+    if len(previous) + 20 > min(80, manifest.get('max_adaptive', 80)):
+        raise ValueError("Adaptive budget exhausted")
+    if any(r['status'] != 'completed' for r in previous):
+        raise ValueError("Previous adaptive round is incomplete")
     pool = candidate_pool(manifest)
     predictions = np.stack([model.predict(pool) for model in fitted.values()])
     uncertainty = np.std(predictions, axis=0) / np.maximum(np.std(predictions.mean(axis=0), axis=0), 1.e-9)
-    chosen = list(np.argsort(uncertainty.max(axis=1))[-40:])
+    chosen = list(np.argsort(uncertainty.max(axis=1))[-10:])
     predicted = predictions.mean(axis=0)
     baseline = next(r for r in manifest['designs'] if r['role'] == 'development' and not r['varied_parameters'])
     feasible = np.array([core_mass(tuple(x)) <= baseline['summary']['core_mass_kg'] for x in pool])
@@ -132,22 +135,27 @@ def adaptive_designs(manifest, fitted):
         for index in indices:
             if int(index) not in chosen:
                 chosen.append(int(index))
-                if len(chosen) == 64:
+                if len(chosen) == 16:
                     break
-        if len(chosen) == 64:
+        if len(chosen) == 16:
             break
+    if len(chosen) != 16:
+        raise ValueError('Insufficient feasible candidates for the near-Pareto allocation')
     low, high = np.array(list(BOUNDS.values())).T
     normalized = (pool - low) / (high - low)
     train = (features(development_records(manifest)) - low) / (high - low)
     distance = cdist(normalized, train).min(axis=1)
-    while len(chosen) < 80:
+    while len(chosen) < 20:
         distance[chosen] = -1
         index = int(np.argmax(distance))
         chosen.append(index)
         distance = np.minimum(distance, np.linalg.norm(normalized - normalized[index], axis=1))
     rows = new_designs(manifest, pool[chosen], "adaptive")
     for index, row in enumerate(rows):
-        row['selection_reason'] = 'uncertainty' if index < 40 else 'near_pareto' if index < 64 else 'sparse_domain'
+        row['selection_reason'] = 'uncertainty' if index < 10 else 'near_pareto' if index < 16 else 'sparse_domain'
+        row['adaptive_round'] = len(previous) // 20 + 1
+    if len(rows) != 20:
+        raise ValueError('Adaptive round did not produce twenty distinct configurations')
     return rows
 
 

@@ -4,6 +4,8 @@ Latest consolidated plan: [H20, sphere 2.65 kg, 8 m/s, 8 ms](KE_HOACH_CHOT_H20_B
 
 Approved 2026-11-06. Source baseline: 38d1e9c. This campaign is separate from the running 7 J/no-damage campaign.
 
+Latest execution revision: the human authorized the complete gated campaign with **60 OFAT** (15 unique nonreference levels per variable), **259 development LHS**, one reference and 80 locked tests. Initial total remains 400. Adaptive designs are allocated in four rounds of twenty. Eight m/s and eight ms remain fixed; a failed time comparison stops for protocol review. Old pilot-only authorization statements below describe earlier instructions.
+
 ## Contract
 
 - Fixed panel 100 mm, core height 20 mm (user revision, 2026-11-06), skins .75 mm, perimeter Encastre, perfect Tie, friction .2, gap .1 mm, no gravity.
@@ -12,7 +14,7 @@ Approved 2026-11-06. Source baseline: 38d1e9c. This campaign is separate from th
 - Pilot only:8 m/s (84.8 J) x three foils .035/.0635/.115 mm, duration8 ms. Do not dispatch5 m/s or the historical10/15/20 m/s pilots. After all three accepted, archived results, execution_scope=pilot stops the controller at pilot_completed, even if the1-3 mm response window is not met. No automatic higher-speed fallback, time extension, mesh batch or400-design production is authorized by this pilot request.
 - The400 main configurations remain proposed and blocked. After further authorization, common-duration qualification starts at the actual8 ms pilot duration and compares against T+4 ms; both objectives within2%, contact ended and energy stable. Mesh factors1/.75/.5, objective differences<=5%, same failure label. Verify40 maximin development designs before releasing remainder. Older.77 kg frustum evidence does not qualify the revised impactor.
 - Domain delta25-45deg, foil .035-.115mm, cell_size4.5-8.2mm, reentrant_cell_height3-7mm; throat >max(8*foil,.5mm). Derived indent is not independent. Seed20261106.
-- Initial 320 development (baseline1, OFAT40, conditional LHS279) plus independent locked test80. 40 dev+10 test per owner. Max adaptive80 (uncertainty40/Pareto24/sparse16), FE confirmations20. Numerical retries and mesh/time pilots are not independent training configurations.
+- Initial 320 development (baseline1, OFAT60, conditional LHS259) plus independent locked test80. 40 dev+10 test per owner. Max adaptive80 in four rounds of20 (uncertainty10/Pareto6/sparse4 each), FE confirmations20. Numerical retries and mesh/time pilots are not independent training configurations.
 - Core SEA=(ALLPD_core+ALLDMD_core)/initial_core_mass. Minimize whole-rear peak corrected by frame0. Ignore disconnected/deleted nodes for displacement and retain explicit rear failure labels. Core mass <= new reference, rear intact. No universal safety limit asserted.
 - Ridge, quadratic, GPR, ExtraTrees; nested CV5/3 on development only. Target >=250 intact development, R2>=.9 and NRMSE<=.1 normalized P95-P5. NSGA-II, final untouched test and 20 new FE confirmations. Keep physical failure separate from numerical failure.
 

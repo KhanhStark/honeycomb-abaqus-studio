@@ -11,7 +11,6 @@ from .campaign import (
     choose_velocity,
     freeze,
     numerical_gate,
-    pilots,
     record,
     reference_model,
     response_converged,
@@ -92,20 +91,16 @@ def advance(original):
                                           'design_ids': [r['id'] for r in rows]})
             return manifest
         if velocity is None:
-            if manifest.get('fallback_allocated'):
-                manifest.update(phase='needs_investigation', error='No pilot velocity met the agreed response window')
-            else:
-                extra = pilots((5., 7.5, 12.5, 17.5, 22.5, 25.))
-                for row in extra:
-                    row['id'] = 'fallback-' + row['id']
-                manifest['pilot_designs'].extend(extra)
-                manifest['fallback_allocated'] = True
+            manifest.update(phase='needs_investigation', error='8 m/s pilot did not meet the agreed response window')
         else:
             durations = {r['model']['duration'] for r in rows if r['model']['velocity_m_s'] == velocity}
             if len(durations) != 1:
                 manifest.update(phase='needs_investigation', error='Selected pilot velocity has inconsistent durations')
                 return manifest
             duration = durations.pop()
+            if velocity != 8. or duration != .008:
+                manifest.update(phase='needs_investigation', error='Pilot differs from the fixed 8 m/s, 8 ms contract')
+                return manifest
             manifest.update(selected_velocity_m_s=velocity, trial_duration_s=duration, phase='time')
             extend_unique(manifest, qualification_designs(velocity, duration + .004))
     elif phase == 'time':
@@ -123,11 +118,8 @@ def advance(original):
             manifest.update(selected_duration_s=duration, phase='mesh')
             for factor in (1., .75, .5):
                 extend_unique(manifest, qualification_designs(velocity, duration, mesh_factor=factor, label='mesh'))
-        elif duration < .012:
-            manifest['trial_duration_s'] = duration + .004
-            extend_unique(manifest, qualification_designs(velocity, duration + .008))
         else:
-            manifest.update(phase='needs_investigation', error='12 ms failed common-duration convergence')
+            manifest.update(phase='needs_investigation', error='8 ms failed the 12 ms diagnostic comparison; review the protocol')
     elif phase == 'mesh':
         groups = [[r for r in manifest['designs'] if r.get('purpose') == 'mesh' and r['mesh_factor'] == factor]
                   for factor in (1., .75, .5)]
@@ -142,11 +134,24 @@ def advance(original):
             manifest.update(phase='needs_investigation', error='Mesh convergence did not meet 5% gate')
         else:
             gates['mesh'] = {'passed': True, 'factor': selected, 'ids': [[r['id'] for r in g] for g in groups]}
-            manifest.update(selected_mesh_factor=selected, phase='sensitivity')
-            for displacement in (.05, .1, .2):
-                extend_unique(manifest, qualification_designs(manifest['selected_velocity_m_s'],
-                    manifest['selected_duration_s'], mesh_factor=selected,
-                    failure_displacement=displacement, label='sensitivity'))
+            manifest.update(selected_mesh_factor=selected, phase='mesh_time')
+            extend_unique(manifest, qualification_designs(manifest['selected_velocity_m_s'], .012,
+                          mesh_factor=selected, label='mesh_time'))
+    elif phase == 'mesh_time':
+        selected = manifest['selected_mesh_factor']
+        short = [r for r in manifest['designs'] if r.get('purpose') == 'mesh' and r['mesh_factor'] == selected]
+        long = [r for r in manifest['designs'] if r.get('purpose') == 'mesh_time' and r['mesh_factor'] == selected]
+        if len(short) != 3 or len(long) != 3 or not passed(short) or not passed(long):
+            return manifest
+        if not all(response_converged(a, b) for a, b in zip(summaries(short), summaries(long), strict=True)):
+            manifest.update(phase='needs_investigation', error='Selected mesh failed the 8/12 ms diagnostic comparison')
+            return manifest
+        gates['time'] = {'passed': True, 'mesh_factor': selected,
+                         'short_ids': [r['id'] for r in short], 'long_ids': [r['id'] for r in long]}
+        manifest['phase'] = 'sensitivity'
+        for displacement in (.05, .1, .2):
+            extend_unique(manifest, qualification_designs(manifest['selected_velocity_m_s'], .008,
+                mesh_factor=selected, failure_displacement=displacement, label='sensitivity'))
     elif phase == 'sensitivity':
         rows = [r for r in manifest['designs'] if r.get('purpose') == 'sensitivity']
         if len(rows) != 9 or not passed(rows):
@@ -187,7 +192,7 @@ def runnable(manifest):
         return []
     if phase == 'pilot':
         return manifest['pilot_designs']
-    if phase in ('time', 'mesh', 'sensitivity'):
+    if phase in ('time', 'mesh', 'mesh_time', 'sensitivity'):
         return [r for r in manifest['designs'] if r.get('purpose') == phase]
     if phase == 'development_time_audit':
         return [r for r in manifest['designs'] if r['id'] in manifest['audit_ids'] or r.get('purpose') == 'audit_extension']

@@ -26,7 +26,7 @@ def test_campaign_identity_survives_json_and_worker_model_validation(frozen):
     if frozen:
         manifest['source_sha'] = 'a' * 40
         gates = {k: {'passed': True} for k in ('material', 'mesh', 'time', 'damage_sensitivity', 'archive_restore')}
-        manifest = freeze(manifest, 15., .008, .75, gates)
+        manifest = freeze(manifest, 8., .008, .75, gates)
     for design in manifest['pilot_designs'] + manifest['designs']:
         transported = json.loads(json.dumps(design))
         worker_model = BatchSpec.model_validate(one_run_spec(transported)).model
