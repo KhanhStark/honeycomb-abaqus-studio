@@ -96,6 +96,8 @@ def claim(old, *, ticket, workflow, source_sha, repository):
 def admission(manifest, design):
     if not manifest.get("enabled") or not manifest.get("source_sha") or not manifest.get("runtime_hash"):
         return False
+    if manifest.get('execution_scope') == 'pilot' and design['role'] != 'pilot':
+        return False
     infrastructure = manifest.get("infrastructure", {}).get(design["owner"], {})
     if infrastructure.get("passed") is not True:
         return False

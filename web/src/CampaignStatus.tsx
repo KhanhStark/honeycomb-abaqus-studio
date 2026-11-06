@@ -12,7 +12,8 @@ type Report = {
 };
 
 const phases: Record<string, string> = {
-    material: 'Kiểm tra vật liệu và chạy nối', pilot: 'Pilot chọn vận tốc', time: 'Kiểm tra thời gian',
+    material: 'Kiểm tra vật liệu và chạy nối', pilot: 'Pilot chọn vận tốc',
+    pilot_completed: 'Pilot hoàn tất · chờ duyệt trước khi chạy dữ liệu chính', time: 'Kiểm tra thời gian',
     mesh: 'Kiểm tra hội tụ lưới', sensitivity: 'Độ nhạy hư hỏng',
     development_time_audit: 'Kiểm tra thời gian trên 40 cấu hình', production: '400 cấu hình ban đầu',
     adaptive: 'Bổ sung theo mô hình', analysis_pending: 'Phân tích dự đoán',
@@ -42,7 +43,7 @@ export default function CampaignStatus() {
     }, []);
     return <section className="sheet" aria-label="Tiến độ chiến dịch lõi có hư hỏng">
         <h2>Lõi có hư hỏng · 400 cấu hình ban đầu</h2>
-        <p>AA6061-T6 tham khảo · H = 15 mm · đầu nón cụt 0,77 kg. Vận tốc và thời gian được khóa sau pilot.</p>
+        <p>AA6061-T6 tham khảo · H = 20 mm · viên bi cứng D = 13,1 mm, khối lượng 2,65 kg, vận tốc 8 m/s · thời gian 8 ms. Chỉ chạy pilot; dữ liệu chính đang chờ.</p>
         {error && <p role="alert">{error}</p>}
         {!report && !error && <p role="status">Đang tải tiến độ…</p>}
         {report && <>

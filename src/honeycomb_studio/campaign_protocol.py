@@ -83,6 +83,14 @@ def advance(original):
         if not passed(rows):
             return manifest
         velocity = choose_velocity(summaries(rows))
+        if manifest.get('execution_scope') == 'pilot':
+            manifest.update(phase='pilot_completed', enabled=False,
+                            pilot_report={'requested_velocities_m_s': sorted({r['model']['velocity_m_s'] for r in rows}),
+                                          'duration_s': sorted({r['model']['duration'] for r in rows}),
+                                          'selected_velocity_m_s': velocity,
+                                          'response_window_passed': velocity is not None,
+                                          'design_ids': [r['id'] for r in rows]})
+            return manifest
         if velocity is None:
             if manifest.get('fallback_allocated'):
                 manifest.update(phase='needs_investigation', error='No pilot velocity met the agreed response window')
@@ -93,8 +101,13 @@ def advance(original):
                 manifest['pilot_designs'].extend(extra)
                 manifest['fallback_allocated'] = True
         else:
-            manifest.update(selected_velocity_m_s=velocity, trial_duration_s=.004, phase='time')
-            extend_unique(manifest, qualification_designs(velocity, .008))
+            durations = {r['model']['duration'] for r in rows if r['model']['velocity_m_s'] == velocity}
+            if len(durations) != 1:
+                manifest.update(phase='needs_investigation', error='Selected pilot velocity has inconsistent durations')
+                return manifest
+            duration = durations.pop()
+            manifest.update(selected_velocity_m_s=velocity, trial_duration_s=duration, phase='time')
+            extend_unique(manifest, qualification_designs(velocity, duration + .004))
     elif phase == 'time':
         velocity, duration = manifest['selected_velocity_m_s'], manifest['trial_duration_s']
         short = [r for r in manifest['pilot_designs'] + manifest['designs']
@@ -170,6 +183,8 @@ def advance(original):
 
 def runnable(manifest):
     phase = manifest.get('phase')
+    if manifest.get('execution_scope') == 'pilot' and phase != 'pilot':
+        return []
     if phase == 'pilot':
         return manifest['pilot_designs']
     if phase in ('time', 'mesh', 'sensitivity'):

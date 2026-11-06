@@ -3,6 +3,21 @@ from pathlib import Path
 from types import SimpleNamespace as Obj
 
 
+class OdbRepository:
+    """The ODB mapping intentionally has no dict.get method."""
+    def __init__(self, values):
+        self.values = values
+
+    def __contains__(self, key):
+        return key in self.values
+
+    def __getitem__(self, key):
+        return self.values[key]
+
+    def __delitem__(self, key):
+        del self.values[key]
+
+
 def test_rear_peak_ignores_detached_nodes_and_remembers_deletion():
     path = Path(__file__).parents[1] / "src/honeycomb_studio/adapters/damage_metrics.py"
     spec = spec_from_file_location("damage_metrics", path)
@@ -26,8 +41,8 @@ def test_rear_peak_ignores_detached_nodes_and_remembers_deletion():
                   for instance in ("BOTTOM-1", "CORE-1", "TOP-1") for i in (1, 2, 3)]
         u = [Obj(instance=Obj(name="BOTTOM-1"), nodeLabel=i, data=(0, 0, z))
              for i, z in enumerate(displacement, 1)]
-        return Obj(fieldOutputs={"U": Field(u), "STATUS": Field(status),
-                                 **{k: Field(status) for k in ('PEEQ', 'SDEG', 'JCCRT', 'TEMP')}})
+        return Obj(fieldOutputs=OdbRepository({"U": Field(u), "STATUS": Field(status),
+                                 **{k: Field(status) for k in ('PEEQ', 'SDEG', 'JCCRT', 'TEMP')}}))
 
     metric.frame(frame([], [.2] * 6), 0)
     metric.frame(frame([], [.2, -.8, -1.8, -.8, -.8, -.8]), .001)
@@ -40,4 +55,8 @@ def test_rear_peak_ignores_detached_nodes_and_remembers_deletion():
     missing = frame([], [.2] * 6)
     del missing.fieldOutputs['JCCRT']
     metric.frame(missing, .003)
+    assert metric.summary()['damage_fields_complete'] is False
+    missing_status = frame([], [.2] * 6)
+    del missing_status.fieldOutputs['STATUS']
+    metric.frame(missing_status, .004)
     assert metric.summary()['damage_fields_complete'] is False

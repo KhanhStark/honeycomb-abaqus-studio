@@ -29,12 +29,13 @@ def test_claim_cannot_start_duplicate_or_mismatched_continuation():
 def test_production_cannot_bypass_material_and_forty_design_time_audit():
     manifest = campaign_manifest()
     row = manifest['designs'][0]
-    manifest.update(enabled=True, source_sha='a' * 40, runtime_hash='b' * 64, frozen=True,
+    manifest.update(enabled=True, execution_scope='full', source_sha='a' * 40, runtime_hash='b' * 64, frozen=True,
                     infrastructure={row['owner']: {'passed': True}}, gates={k: {'passed': True} for k in
                     ('material', 'time', 'mesh', 'damage_sensitivity', 'archive_restore')})
     assert not admission(manifest, row)
     manifest['audit_ids'] = [row['id']]
     assert admission(manifest, row)
+    assert not admission({**manifest, 'execution_scope': 'pilot'}, row)
     manifest['gates']['material']['passed'] = False
     assert not admission(manifest, row)
 

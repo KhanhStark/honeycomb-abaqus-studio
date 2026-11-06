@@ -8,6 +8,7 @@ import json
 import os
 import sqlite3
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,9 +22,24 @@ def now() -> str:
 
 def write_json(path: Path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
-    os.replace(tmp, path)
+    # Each writer owns its temporary file. Windows readers/scanners can briefly
+    # prevent replacement even after the write handle has been closed.
+    tmp = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+    try:
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
+        for attempt in range(10):
+            try:
+                os.replace(tmp, path)
+                break
+            except PermissionError as error:
+                if getattr(error, "winerror", None) not in (5, 32, 33) or attempt == 9:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def write_input_csv(path: Path, data: dict):

@@ -34,7 +34,8 @@ def test_core_sea_uses_part_dissipation_with_real_assembly_region_name(tmp_path)
     write_json(tmp_path / 'histories.json', histories)
     write_json(tmp_path / 'inventory.json', {'frames': 5, 'fields': []})
     write_json(tmp_path / 'damage-summary.json', {'damage_fields_complete': True})
-    summary, _ = history_summary(tmp_path, reference_model().resolved(), {'core_mass_kg': .0003})
+    fixture_model = reference_model(mass_kg=.77, velocity_m_s=15, duration=.004)
+    summary, _ = history_summary(tmp_path, fixture_model.resolved(), {'core_mass_kg': .0003})
     assert summary['initial_kinetic_energy_J'] == 86.625
     assert summary['core_dissipation_J'] == 15
     assert summary['SEA_core_J_kg'] == pytest.approx(50000)

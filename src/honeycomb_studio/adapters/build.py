@@ -267,7 +267,10 @@ if P['gravity']:
 cp=m.ContactProperty('Frictionless-HardContact')
 cp.NormalBehavior(pressureOverclosure=HARD,allowSeparation=ON,constraintEnforcementMethod=DEFAULT)
 if P['friction']:
-    cp.TangentialBehavior(formulation=PENALTY,table=((P['friction'],),))
+    # CAE 2017's API defaults fraction to zero, which PENALTY rejects even
+    # for Explicit. Set the documented contact slip tolerance explicitly.
+    cp.TangentialBehavior(formulation=PENALTY,table=((P['friction'],),),
+                          maximumElasticSlip=FRACTION,fraction=.005)
 else:
     cp.TangentialBehavior(formulation=FRICTIONLESS)
 gc=m.ContactExp(name='GeneralContact-SelfContact',createStepName='Initial')
@@ -288,7 +291,10 @@ a.Set(name='SANDWICH_NODES',nodes=(a.instances['Core-1'].nodes,a.instances['Top-
 stress=[v for v in P['field_variables'] if v in ELEMENT_FIELDS]
 if stress:
     m.FieldOutputRequest(name='Sandwich-Stress-PlasticStrain',createStepName='Impact',variables=tuple(stress),region=a.sets['SANDWICH_ELEMENTS'],numIntervals=P['field_intervals'])
-m.historyOutputRequests['H-Output-1'].setValues(variables=tuple(P['history_variables']),numIntervals=P['history_intervals'])
+# The 2017 CAE API rejects ALLIHE for a mechanical Explicit step; the
+# adiabatic keyword and complete solver energy request are injected together.
+cae_history=[v for v in P['history_variables'] if not (HAS_DAMAGE and v=='ALLIHE')]
+m.historyOutputRequests['H-Output-1'].setValues(variables=tuple(cae_history),numIntervals=P['history_intervals'])
 if HAS_DAMAGE:
     for instance,group in [('Core-1','CORE'),('Top-1','FRONT'),('Bottom-1','REAR')]:
         a.Set(name=group+'_ENERGY',elements=a.instances[instance].elements)

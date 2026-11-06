@@ -11,6 +11,10 @@ from .models import BatchSpec, JohnsonCook, Material, ModelSpec, digest
 
 VERSION = "core-damage-v2"
 SEED = 20261106
+INITIAL_DURATION_S = .008
+DEFAULT_CAMPAIGN_ID = VERSION + "-20261106"
+OFAT_LEVELS = 15
+DEVELOPMENT_LHS_COUNT = 259
 OWNERS = ("luukhanh24", "KhanhStark", "xuankhanh24", "dzdeptrai390",
           "khanhstarkpubg-ux", "xuankhanh054-eng", "starkdzdz-eng", "luukhank574-design")
 BOUNDS = {"reentrant_delta_deg": (25., 45.), "foil": (.035, .115),
@@ -28,12 +32,14 @@ def reference_model(**updates) -> ModelSpec:
     material = Material(name="AA6061-T6-reference", hardening="johnson_cook",
                         johnson_cook=JohnsonCook(), yield_stress=324, ultimate=324)
     values = dict(physics_version=VERSION, core_topology="reentrant_0", reentrant_geometry="angle",
-                  core_height=15, skin=.75, bottom_skin=.75, clamp_mode="perimeter",
+                  core_height=20, skin=.75, bottom_skin=.75, clamp_mode="perimeter",
                   core_material=material.model_dump(), face_material=material.model_dump(),
-                  impactor_shape="blunt_cone", mass_kg=.77, loading="velocity", velocity_m_s=15,
+                  impactor_shape="sphere", mass_kg=2.65,
+                  ball_size_mode="diameter", ball_diameter=13.1, ball_radius=6.55,
+                  loading="velocity", velocity_m_s=8,
                   friction=.2, gravity=0, gap=.1, adiabatic=True, initial_temperature_C=20,
                   cpus=4, mesh_preset="custom", fine_radius=25, skin_patch_half=25,
-                  skin_self_contact=True, duration=.004, field_intervals=400, history_intervals=2000,
+                  skin_self_contact=True, duration=INITIAL_DURATION_S, field_intervals=800, history_intervals=4000,
                   field_variables=["U", "V", "S", "PEEQ", "STATUS", "SDEG", "DMICRT", "TEMP", "CFORCE"],
                   history_variables=["ALLAE", "ALLIE", "ALLKE", "ALLPD", "ALLDMD", "ALLSE", "ALLVD",
                                      "ALLFD", "ALLWK", "ETOTAL", "ALLIHE"], **BASE)
@@ -48,6 +54,18 @@ def geometry_valid(values):
         return False
     throat = model.cell_size - 2 * model.effective_indent()
     return throat > max(8 * model.foil, .5)
+
+
+def ofat_values(low, high, baseline, count=OFAT_LEVELS):
+    """Return endpoint-inclusive OFAT levels without duplicating the reference."""
+    lower_count = count // 2 + 1
+    upper_count = count - lower_count
+    lower = np.linspace(low, baseline, lower_count, endpoint=False)
+    upper = np.linspace(baseline, high, upper_count + 1, endpoint=True)[1:]
+    values = [float(value) for value in (*lower, *upper)]
+    if len(values) != count or any(math.isclose(value, baseline, rel_tol=0, abs_tol=1e-12) for value in values):
+        raise ValueError("OFAT levels must exclude the reference value")
+    return values
 
 
 def model_hashes(model):
@@ -67,21 +85,21 @@ def record(model, role, index, owner, varied):
             "status": "pending", "attempt": 0, "segment": 0}
 
 
-def pilots(velocities=(10., 15., 20.)):
+def pilots(velocities=(8.,)):
     rows = []
     for velocity in velocities:
         for foil in (.035, .0635, .115):
             model = reference_model(velocity_m_s=velocity, foil=foil)
             i = len(rows)
-            rows.append(record(model, "pilot", i + 1, OWNERS[i % 8], ["velocity_m_s", "foil"]))
+            rows.append(record(model, "pilot", i + 1, OWNERS[i % 8], ["foil"]))
     return rows
 
 
-def campaign_manifest():
+def campaign_manifest(campaign_id: str | None = None):
     """Production geometry is proposed, never runnable until independent pilot gates pass."""
     dev = [(BASE.copy(), [])]
     for name, (low, high) in BOUNDS.items():
-        for value in np.linspace(low, high, 10):
+        for value in ofat_values(low, high, BASE[name]):
             point = {**BASE, name: float(value)}
             if not geometry_valid(point):
                 raise ValueError("OFAT design is not manufacturable: " + name)
@@ -105,18 +123,18 @@ def campaign_manifest():
                 return accepted
         raise ValueError("Unable to fill valid conditional LHS")
 
-    dev += lhs(279, SEED)
+    dev += lhs(DEVELOPMENT_LHS_COUNT, SEED)
     test = lhs(80, SEED + 1)
     rows = []
     for role, points in (("development", dev), ("test", test)):
         for i, (point, varied) in enumerate(points):
             rows.append(record(reference_model(**point), role, i + 1, OWNERS[i % 8], varied))
-    return {"schema_version": 1, "id": VERSION + "-20261106", "physics_version": VERSION,
+    return {"schema_version": 1, "id": campaign_id or DEFAULT_CAMPAIGN_ID, "physics_version": VERSION,
             "seed": SEED, "source_sha": None, "frozen": False,
             "material_validation": "reference_unvalidated", "bounds": BOUNDS,
             "domain": "cell_size - h*tan(delta) > max(8*foil, 0.5 mm)",
             "gates": {}, "license_capacity": 0, "capacity_stage": 8,
-            "max_adaptive": 80, "confirmation_count": 20,
+            "max_adaptive": 80, "confirmation_count": 20, "execution_scope": "pilot",
             "pilot_designs": pilots(), "designs": rows}
 
 

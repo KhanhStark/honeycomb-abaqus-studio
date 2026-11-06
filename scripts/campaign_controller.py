@@ -237,7 +237,7 @@ def main():
     app = CampaignApp()
     store = CampaignStore(app.repository(CANONICAL))
     if args.mode == 'initialize':
-        manifest = campaign_manifest()
+        manifest = campaign_manifest(args.campaign_id)
         manifest['source_sha'] = os.environ['CAMPAIGN_SOURCE_SHA']
         from honeycomb_studio.cloud_runtime import execution_runtime
         from honeycomb_studio.models import digest

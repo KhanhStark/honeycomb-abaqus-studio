@@ -34,7 +34,8 @@ class RearMetrics(object):
         if 'U' not in outputs:
             self.complete = False
             return
-        status = outputs.get('STATUS')
+        # Abaqus 2017 Repository supports membership and indexing, not dict.get.
+        status = outputs['STATUS'] if 'STATUS' in outputs else None
         if status is None:
             self.complete = False
             return

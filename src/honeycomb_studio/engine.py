@@ -232,6 +232,9 @@ class Engine:
         b = self.store.get("batches", r["batch_id"])
         return b.get("pause_requested") and b.get("stop_immediately")
 
+    def _runtime_memory_pressure(self, spec: dict) -> bool:
+        return psutil.virtual_memory().available < spec.get("min_available_ram_gb", 2) * 1024**3
+
     def _monitor(self, r: dict, a: dict, phase: str, args: list[str] | None, spool: Path | None = None):
         raw = Path(a["path"]) / "raw"
         logs = Path(a["path"]) / "logs"
@@ -279,8 +282,8 @@ class Engine:
                     resource_error="Đã chạm dung lượng dự phòng; giải phóng/chuyển dữ liệu rồi tiếp tục",
                 )
                 self.store.save("batches", b)
-            if (not self.fake and psutil.virtual_memory().available <
-                    self.store.get("batches", r["batch_id"])["spec"].get("min_available_ram_gb", 2) * 1024**3):
+            if (not self.fake and self._runtime_memory_pressure(
+                    self.store.get("batches", r["batch_id"])["spec"])):
                 b = self.store.get("batches", r["batch_id"])
                 b.update(pause_requested=True, stop_immediately=True,
                          resource_error="RAM khả dụng dưới mức dự phòng; dừng các lượt đang chạy để giữ dữ liệu")
@@ -550,6 +553,7 @@ class Engine:
                             "input=" + a["job_name"] + ".inp",
                             "datacheck",
                             "cpus=" + str(r["resolved"]["cpus"]),
+                            "double=both",
                             "interactive",
                         ],
                     )
@@ -643,6 +647,7 @@ class Engine:
                 Path(__file__).with_name("research_report.py"),
                 Path(__file__).with_name("research.py"),
                 ADAPTERS / "extract.py",
+                ADAPTERS / "damage_metrics.py",
                 ADAPTERS / "viewer.py",
                 ADAPTERS / "render.py",
             ]

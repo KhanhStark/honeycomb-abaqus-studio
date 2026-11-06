@@ -9,7 +9,11 @@ def rewrite_input(path, config, materials):
     if not cards:
         return
     text = open(path).read()
-    blocks = re.split(r'(?m)^(?=\*(?!\*))', text)
+    # Python 2.7 re.split ignores zero-width matches. Slice at finditer
+    # offsets so the native Abaqus interpreter sees the same keyword blocks.
+    offsets = [match.start() for match in re.finditer(r'(?m)^\*(?!\*)', text)]
+    boundaries = sorted(set([0, len(text)] + offsets))
+    blocks = [text[lo:hi] for lo, hi in zip(boundaries, boundaries[1:])]
     result = []
     current = None
     controls_written = False
@@ -43,6 +47,12 @@ def rewrite_input(path, config, materials):
             lines = block.split('\n')
             lines[0] += ', ADIABATIC'
             block = '\n'.join(lines)
+        if first.startswith('*energy output') and not re.search(r'\belset\s*=', first):
+            # Preserve the requested global history, including ALLIHE which
+            # CAE 2017 cannot create before the adiabatic step is injected.
+            variables = config.get('history_variables')
+            if variables:
+                block = block.split('\n', 1)[0] + '\n' + ', '.join(variables) + '\n'
         result.append(block)
     if seen != set(cards) or not temperature_written:
         raise ValueError('Incomplete JC material injection; refusing solver input')

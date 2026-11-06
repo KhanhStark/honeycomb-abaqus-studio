@@ -28,7 +28,7 @@ def main():
     app = CampaignApp()
     github = app.repository(CANONICAL)
     store = CampaignStore(github)
-    manifest = store.load('core-damage-v2-20261106')
+    manifest = store.load(os.environ.get('CORE_DAMAGE_CAMPAIGN_ID', 'core-damage-v2-20261106'))
     if manifest.get('phase') != 'analysis_pending' or manifest.get('analysis_ticket') != os.environ['ANALYSIS_TICKET']:
         raise ValueError('This analysis ticket is stale or already consumed')
     phase = manifest['analysis_origin_phase']
