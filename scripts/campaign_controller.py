@@ -77,6 +77,8 @@ def reconcile(store, manifest, app):
         elif work.get('workflow_run_id'):
             row['workflow_run_id'] = work['workflow_run_id']
             row['phase'] = work.get('phase', 'preparing')
+            if work.get('status') == 'claimed' and not work.get('error'):
+                row['error'] = None
             run = github.repo('GET', '/actions/runs/' + str(work['workflow_run_id']))
             if run['status'] == 'completed':
                 row.update(status='needs_investigation', error='Workflow ended without a verified solver/publication receipt',
@@ -253,13 +255,31 @@ def dispatch_candidates(manifest):
     return rows
 
 
+def relay(store, app, identity, workflow_run_id):
+    """Keep the active campaign moving when GitHub's scheduled event is delayed."""
+    metadata, _ = store.catalog.get(campaign_key(identity) + '/meta')
+    active_phases = {'material', 'pilot', 'time', 'mesh', 'mesh_time', 'sensitivity',
+                     'development_time_audit', 'production', 'adaptive', 'confirmation', 'analysis_pending'}
+    if not metadata or not metadata.get('enabled') or metadata.get('phase') not in active_phases:
+        return {'controller_redispatched': False}
+    github = app.repository(CANONICAL)
+    runs = github.repo('GET', '/actions/workflows/core-damage-controller.yml/runs?per_page=100')['workflow_runs']
+    if any(r['status'] != 'completed' and str(r['id']) != str(workflow_run_id) for r in runs):
+        return {'controller_redispatched': False, 'reason': 'Another controller is already queued'}
+    github.repo('POST', '/actions/workflows/core-damage-controller.yml/dispatches', {'ref': 'main'})
+    return {'controller_redispatched': True}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode', choices=('initialize', 'tick', 'status'))
+    parser.add_argument('mode', choices=('initialize', 'tick', 'status', 'relay'))
     parser.add_argument('--campaign-id', default='core-damage-v2-20261106')
     args = parser.parse_args()
     app = CampaignApp()
     store = CampaignStore(app.repository(CANONICAL))
+    if args.mode == 'relay':
+        print(json.dumps(relay(store, app, args.campaign_id, os.environ['GITHUB_RUN_ID'])))
+        return
     if args.mode == 'initialize':
         manifest = campaign_manifest(args.campaign_id)
         manifest['source_sha'] = os.environ['CAMPAIGN_SOURCE_SHA']

@@ -20,7 +20,14 @@ mẫu mới; giữ nguyên dữ liệu đã tính để điều tra. Không đ�
 đã dispatch khi khóa giao thức. Báo riêng số trong 400 đã dispatch, hoàn tất số,
 và trạng thái kiểm chứng toàn bộ; pilot và coupon không cộng vào số 400.
 
-Cập nhật theo lệnh thực thi: **60 OFAT**, gồm 15 mức/biến không trùng tham chiếu; **259 LHS phát triển**. Đã được phép triển khai toàn bộ khi lần lượt đạt các cổng kiểm chứng. Qualification phục hồi và hạ tầng tám tài khoản đã đạt trên source `ca9ee5448fb312c7d7ed9fac5b4eefde757697b8`; controller đã mở ở pha pilot. Bộ 400 mẫu còn chờ các cổng hội tụ và độ nhạy.
+Cập nhật thực thi ngày 07/11/2026: **60 OFAT**, gồm 15 mức/biến không trùng
+tham chiếu; **259 LHS phát triển**, 1 tham chiếu và 80 test khóa = **400**.
+Qualification phục hồi và hạ tầng cả tám tài khoản đã đạt trên worker source
+`f7d7e93cb0d97f8c99246a0a904d5d173a19a70d`. Đã bật thu thập song song
+và 16 job (2 runner độc lập/tài khoản). Controller tự gửi lượt điều phối tiếp
+sau 3 phút chờ, có khóa concurrency và không gửi trùng khi đã có lượt chờ;
+ngừng nối tiếp khi bị chặn, tắt hoặc hoàn tất. Số mẫu hoàn tất lấy từ receipt
+đã kiểm tra, không suy từ việc gửi workflow.
 
 ## 1. Phạm vi và đầu ra
 

@@ -52,6 +52,39 @@ def test_controller_overlaps_only_explicitly_prefetched_qualification_checks():
     assert dispatch_candidates(manifest) == manifest['pilot_designs']
 
 
+def test_controller_relay_stops_when_blocked_disabled_or_already_queued():
+    import sys
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    sys.path.insert(0, str(Path(__file__).parents[1] / 'scripts'))
+    from campaign_controller import relay
+
+    metadata = {'enabled': True, 'phase': 'pilot'}
+    runs = [{'id': 11, 'status': 'in_progress'}]
+    dispatched = []
+    store = SimpleNamespace(catalog=SimpleNamespace(get=lambda _: (metadata, None)))
+
+    def request(method, path, body=None):
+        if method == 'GET':
+            return {'workflow_runs': runs}
+        dispatched.append(body)
+
+    app = SimpleNamespace(repository=lambda _: SimpleNamespace(repo=request))
+    assert relay(store, app, 'core-damage-v2-20261107', '11')['controller_redispatched']
+    assert dispatched == [{'ref': 'main'}]
+    runs.append({'id': 12, 'status': 'queued'})
+    assert not relay(store, app, 'core-damage-v2-20261107', '11')['controller_redispatched']
+    runs.pop()
+    metadata['enabled'] = False
+    assert not relay(store, app, 'core-damage-v2-20261107', '11')['controller_redispatched']
+    metadata['enabled'] = True
+    for phase in ('needs_investigation', 'completed', 'verification_failed', 'insufficient_data'):
+        metadata['phase'] = phase
+        assert not relay(store, app, 'core-damage-v2-20261107', '11')['controller_redispatched']
+    assert len(dispatched) == 1
+
+
 def test_failed_eight_ms_time_gate_does_not_allocate_sixteen_ms():
     manifest = campaign_manifest()
     manifest.update(phase='time', execution_scope='full', selected_velocity_m_s=8., trial_duration_s=.008)
