@@ -207,6 +207,44 @@ def intact_probability(classifier, x):
     return classifier.predict_proba(x)[:, list(classifier.classes_).index(1)]
 
 
+def confirmation_selection(manifest, points, objectives):
+    """Two extremes, six balanced trades and twelve points covering objective gaps."""
+    known = {tuple(row['model'][k] for k in BOUNDS) for row in manifest['designs']}
+    unique = []
+    for index, point in enumerate(points):
+        key = tuple(map(float, point))
+        if key not in known:
+            unique.append(index)
+            known.add(key)
+    if len(unique) < 20:
+        raise ValueError('Fewer than twenty new Pareto configurations')
+    points, objectives = np.asarray(points)[unique], np.asarray(objectives)[unique]
+    normalized = (objectives - objectives.min(axis=0)) / np.maximum(np.ptp(objectives, axis=0), 1.e-12)
+    chosen = [int(np.argmin(objectives[:, 0])), int(np.argmin(objectives[:, 1]))]
+    if chosen[0] == chosen[1]:
+        raise ValueError('Pareto candidates do not contain two distinct objective extremes')
+    reasons = ['pareto_extreme_sea', 'pareto_extreme_rear']
+    for index in np.argsort(normalized.max(axis=1)):
+        if int(index) not in chosen:
+            chosen.append(int(index))
+            reasons.append('pareto_balance')
+            if len(chosen) == 8:
+                break
+    distance = cdist(normalized, normalized[chosen]).min(axis=1)
+    while len(chosen) < 20:
+        distance[chosen] = -1
+        index = int(np.argmax(distance))
+        chosen.append(index)
+        reasons.append('pareto_coverage')
+        distance = np.minimum(distance, np.linalg.norm(normalized - normalized[index], axis=1))
+    rows = new_designs(manifest, points[chosen], 'confirmation')
+    if len(rows) != 20:
+        raise ValueError('Pareto candidates duplicate existing configurations')
+    for row, reason in zip(rows, reasons, strict=True):
+        row['selection_reason'] = reason
+    return rows
+
+
 def confirmation_designs(manifest, surrogate, classifier):
     from pymoo.algorithms.moo.nsga2 import NSGA2
     from pymoo.core.problem import Problem
@@ -232,12 +270,7 @@ def confirmation_designs(manifest, surrogate, classifier):
     result = minimize(CoreProblem(), NSGA2(pop_size=160), ("n_gen", 200), seed=SEED, verbose=False)
     if result.X is None or len(result.X) < 20:
         raise ValueError("Fewer than 20 feasible surrogate Pareto candidates")
-    ordered = result.X[np.argsort(result.F[:, 1])]
-    selected = ordered[np.linspace(0, len(ordered) - 1, 20).round().astype(int)]
-    rows = new_designs(manifest, selected, "confirmation")
-    if len(rows) != 20:
-        raise ValueError("Pareto candidates duplicate existing configurations")
-    return rows
+    return confirmation_selection(manifest, result.X, result.F)
 
 
 def evaluate_locked_test(manifest, surrogate, report):

@@ -106,3 +106,18 @@ def test_surrogate_mass_uses_h20_and_double_walls(monkeypatch):
     assert campaign_ml.core_mass((35., .0635, 6.35, 5.)) == pytest.approx(11 * 100 * .0635 * 2700e-9)
     assert calls == [(100., 20.)]
     campaign_ml.core_mass.cache_clear()
+
+
+def test_fe_confirmation_covers_extremes_balance_and_new_tradeoffs():
+    manifest = campaign_manifest()
+    points = campaign_ml.candidate_pool(manifest, count=40)
+    # A known point and a duplicate must not consume either of the twenty FE slots.
+    candidates = np.vstack((points, points[0], [manifest['designs'][0]['model'][k] for k in manifest['bounds']]))
+    x = np.linspace(0., 1., len(candidates))
+    objectives = np.column_stack((-x, x))
+    rows = campaign_ml.confirmation_selection(manifest, candidates, objectives)
+    assert len(rows) == len({row['physics_hash'] for row in rows}) == 20
+    assert Counter(row['selection_reason'] for row in rows) == {
+        'pareto_extreme_sea': 1, 'pareto_extreme_rear': 1, 'pareto_balance': 6, 'pareto_coverage': 12}
+    assert rows[0]['model']['reentrant_delta_deg'] == points[-1, 0]
+    assert rows[1]['model']['reentrant_delta_deg'] == points[0, 0]
