@@ -243,7 +243,8 @@ class Engine:
         process = None
         if args is not None:
             if phase == 'solving' and self.continuation_control is not None:
-                control = raw / (a['job_name'] + '.continuation.c')
+                # Abaqus 2020 replaces every '.c' when deriving object names.
+                control = raw / (a['job_name'] + '_continuation.c')
                 expected = checksum(self.continuation_control)
                 if control.exists() and checksum(control) != expected:
                     raise ValueError('Continuation callback changed; recover requires the original source')
