@@ -1,6 +1,11 @@
 name: Licensed Explicit recovery acceptance
 on:
   workflow_dispatch:
+    inputs:
+      diagnostic:
+        description: Compare isolated native stop paths; does not qualify the campaign
+        type: boolean
+        default: false
 permissions:
   contents: read
   id-token: write
@@ -38,7 +43,11 @@ jobs:
       - name: Kiểm tra SHA-256 và cài Abaqus trong môi trường cách ly
         run: python3 scripts/actions_step.py --title "Kiểm tra và cài Abaqus" --details output/actions-logs/install.log -- bash scripts/linux_media/install_runtime.sh
       - name: Prove checkpoint integrity and native recover before research retry
+        if: ${{ !inputs.diagnostic }}
         run: uv run --locked --extra cloud python scripts/verify_explicit_recover.py
+      - name: Compare native stop paths in the same Abaqus installation
+        if: ${{ inputs.diagnostic }}
+        run: uv run --locked --extra cloud python scripts/diagnose_explicit_stop.py
       - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
@@ -50,3 +59,8 @@ jobs:
             /tmp/honeycomb-recover-probe/*.json
             /tmp/honeycomb-recover-probe/*.txt
             output/install-probe/caa-installer.log
+            output/explicit-stop-diagnostic.json
+            /tmp/honeycomb-stop-diagnostic/**/*.log
+            /tmp/honeycomb-stop-diagnostic/**/*.sta
+            /tmp/honeycomb-stop-diagnostic/**/*.cpp
+            /tmp/honeycomb-stop-diagnostic/results.json
