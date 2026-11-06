@@ -9,6 +9,7 @@ from collections import Counter
 
 from honeycomb_studio.campaign import OWNERS, campaign_manifest, progress
 from honeycomb_studio.campaign_acceptance import import_evidence
+from honeycomb_studio.campaign_export import globally_qualified
 from honeycomb_studio.campaign_protocol import advance, runnable
 from honeycomb_studio.campaign_queue import (
     CampaignStore,
@@ -141,6 +142,12 @@ def reconcile_publication(manifest, row, app):
 def status_report(manifest):
     report = progress(manifest)
     report.update(phase=manifest['phase'], enabled=manifest['enabled'], errors=[], owners={})
+    initial = [r for r in manifest['designs'] if r['role'] in ('development', 'test')]
+    report.update(initial_400_dispatched=sum(r['status'] != 'pending' for r in initial),
+                  initial_400_completed=sum(r['status'] == 'completed' and r.get('archive_verified', False)
+                                            and r.get('quality', {}).get('passed', False) for r in initial),
+                  global_qualification_passed=globally_qualified(manifest),
+                  provisional_collection=manifest.get('provisional_collection', {}).get('enabled', False))
     samples = [r for r in manifest['designs'] if r['role'] in ('development', 'adaptive', 'test', 'confirmation')]
     done = [r for r in samples if r['status'] == 'completed' and r.get('archive_verified')]
     for owner in OWNERS:
@@ -232,12 +239,18 @@ def tick(store, app, identity):
 def dispatch_candidates(manifest):
     """Overlap explicitly planned time/mesh checks with pilots under the same quota."""
     rows = runnable(manifest)
-    if manifest.get('execution_scope') != 'full' or manifest.get('phase') not in ('pilot', 'time', 'mesh'):
+    if manifest.get('execution_scope') != 'full':
         return rows
     requested = set(manifest.get('prefetched_qualification_ids', []))
     existing = {r['id'] for r in rows}
-    return rows + [r for r in manifest['designs'] if r['id'] in requested and r['id'] not in existing
-                   and r['role'] == 'qualification' and r.get('purpose') in ('time', 'mesh')]
+    if manifest.get('phase') in ('pilot', 'time', 'mesh'):
+        rows += [r for r in manifest['designs'] if r['id'] in requested and r['id'] not in existing
+                 and r['role'] == 'qualification' and r.get('purpose') in ('time', 'mesh')]
+    if (manifest.get('provisional_collection', {}).get('enabled') is True
+            and manifest.get('phase') in ('pilot', 'time', 'sensitivity', 'development_time_audit')):
+        existing = {r['id'] for r in rows}
+        rows += [r for r in manifest['designs'] if r['id'] not in existing and r['role'] in ('development', 'test')]
+    return rows
 
 
 def main():

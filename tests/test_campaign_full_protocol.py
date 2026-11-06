@@ -43,6 +43,11 @@ def test_controller_overlaps_only_explicitly_prefetched_qualification_checks():
     manifest['prefetched_qualification_ids'] = [checks[0]['id'], manifest['designs'][0]['id']]
     candidates = dispatch_candidates(manifest)
     assert {r['id'] for r in candidates} == {r['id'] for r in manifest['pilot_designs']} | {checks[0]['id']}
+    manifest['provisional_collection'] = {'enabled': True}
+    assert len(dispatch_candidates(manifest)) == 404
+    manifest['phase'] = 'needs_investigation'
+    assert dispatch_candidates(manifest) == []
+    manifest['phase'] = 'pilot'
     manifest['execution_scope'] = 'pilot'
     assert dispatch_candidates(manifest) == manifest['pilot_designs']
 
@@ -95,6 +100,19 @@ def test_freeze_rejects_changes_to_the_fixed_load_and_main_duration(velocity, du
     gates = {name: {'passed': True} for name in ('material', 'mesh', 'time', 'damage_sensitivity', 'archive_restore')}
     with pytest.raises(ValueError, match='fixed|8 m/s|8 ms'):
         freeze(manifest, velocity, duration, 1., gates)
+
+
+def test_freeze_cannot_rewrite_dispatched_provisional_inputs():
+    manifest = campaign_manifest()
+    manifest['source_sha'] = 'a' * 40
+    row = manifest['designs'][0]
+    row['status'] = 'dispatching'
+    original = row['physics_hash']
+    gates = {name: {'passed': True} for name in ('material', 'mesh', 'time', 'damage_sensitivity', 'archive_restore')}
+    with pytest.raises(ValueError, match='already dispatched'):
+        freeze(manifest, 8., .008, .75, gates)
+    assert row['physics_hash'] == original
+    assert freeze(manifest, 8., .008, 1., gates)['designs'][0]['physics_hash'] == original
 
 
 def test_refined_mesh_gets_its_own_time_comparison_before_sensitivity():

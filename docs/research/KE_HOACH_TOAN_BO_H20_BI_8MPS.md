@@ -11,6 +11,15 @@ giải với vùng mịn 25/25 mm giữ nguyên đầu vào và nguồn gốc, c
 đoán bổ sung; bộ 400 dùng đồng nhất lưới được người dùng chọn. Các kiểm tra
 vật liệu, thời gian, năng lượng, trạng thái hư hỏng và tính đủ của dữ liệu vẫn áp dụng.
 
+Theo lệnh tiếp tục thu đủ 400 mẫu, thu thập FE trên đầu vào đã chốt được phép
+chạy song song với các kiểm chứng còn lại. Quyền thu thập này chỉ mở khi vật
+liệu, restart và archive restore đã đạt trên đúng source/runtime và đầu vào
+khớp hoàn toàn mẫu chuẩn với bốn biến khảo sát. Chưa đạt kiểm chứng toàn chiến
+dịch thì chưa cho mẫu vào huấn luyện. Nếu kiểm chứng bị chặn thì dừng phát
+mẫu mới; giữ nguyên dữ liệu đã tính để điều tra. Không đổi đầu vào của cấu hình
+đã dispatch khi khóa giao thức. Báo riêng số trong 400 đã dispatch, hoàn tất số,
+và trạng thái kiểm chứng toàn bộ; pilot và coupon không cộng vào số 400.
+
 Cập nhật theo lệnh thực thi: **60 OFAT**, gồm 15 mức/biến không trùng tham chiếu; **259 LHS phát triển**. Đã được phép triển khai toàn bộ khi lần lượt đạt các cổng kiểm chứng. Qualification phục hồi và hạ tầng tám tài khoản đã đạt trên source `ca9ee5448fb312c7d7ed9fac5b4eefde757697b8`; controller đã mở ở pha pilot. Bộ 400 mẫu còn chờ các cổng hội tụ và độ nhạy.
 
 ## 1. Phạm vi và đầu ra

@@ -10,9 +10,9 @@ from copy import deepcopy
 
 import httpx
 
-from .campaign import OWNERS
+from .campaign import BOUNDS, OWNERS, reference_model
 from .cloud_github import Catalog, Github
-from .models import digest
+from .models import ModelSpec, digest
 
 CAMPAIGN = re.compile(r"^core-damage-v2-[0-9]{8}$")
 ACTIVE = {"queued", "in_progress", "waiting", "pending", "requested"}
@@ -106,6 +106,8 @@ def admission(manifest, design):
     if design["role"] in ("qualification", "material"):
         return (manifest.get('gates', {}).get('material', {}).get('passed') is True
                 and manifest.get('gates', {}).get('restart', {}).get('passed') is True)
+    if parallel_collection_admission(manifest, design):
+        return True
     if not manifest.get("frozen"):
         return False
     gates = manifest.get("gates", {})
@@ -115,6 +117,37 @@ def admission(manifest, design):
     if design["id"] in manifest.get("audit_ids", []):
         return True
     return gates.get("development_time_audit", {}).get("passed") is True
+
+
+def parallel_collection_admission(manifest, design):
+    """Collect fixed-input FE bytes provisionally; global scientific acceptance stays closed."""
+    if (manifest.get('provisional_collection', {}).get('enabled') is not True
+            or manifest.get('phase') not in ('pilot', 'time', 'sensitivity', 'development_time_audit')
+            or design['role'] not in ('development', 'test')
+            or manifest.get('mesh_policy', {}).get('mode') != 'reuse_actions_reference'):
+        return False
+    gates = manifest.get('gates', {})
+    if not all(gates.get(k, {}).get('passed') is True
+               and gates[k].get('source_sha') == manifest.get('source_sha')
+               and gates[k].get('runtime_hash') == manifest.get('runtime_hash')
+               for k in ('material', 'restart', 'archive_restore')):
+        return False
+    model = design['model']
+    parameters = manifest['mesh_policy'].get('parameters', {})
+    required_mesh = {'core_centre_seed', 'core_outer_seed', 'skin_centre_seed', 'skin_outer_seed',
+                     'reentrant_depth_seed', 'core_z_divisions', 'ball_seed', 'fine_radius',
+                     'skin_patch_half', 'shell_element', 'shell_points'}
+    if not required_mesh <= parameters.keys():
+        return False
+    fixed = {'velocity_m_s': 8., 'duration': .008, 'mass_kg': 2.65, 'core_height': 20., 'cpus': 4}
+    fixed.update(parameters)
+    if not all(model.get(k) == value for k, value in fixed.items()):
+        return False
+    try:
+        expected = ModelSpec.model_validate(reference_model(**{key: model[key] for key in BOUNDS}).model_dump())
+    except (ValueError, KeyError, TypeError):
+        return False
+    return digest(model) == digest(expected.model_dump()) and design['physics_hash'] == digest(expected.resolved())
 
 
 def available_slots(capacity, owner_jobs, reserved=0):
@@ -203,6 +236,10 @@ class Dispatcher:
             if segment >= 4 or attempt > 2:
                 raise ValueError("Execution budget exhausted")
             return {**old, "status": "dispatching", "ticket": ticket,
+                    'error': None,
+                    'qualification_pending_at_dispatch': parallel_collection_admission(manifest, old),
+                    'protocol_hash_at_dispatch': manifest.get('protocol_hash'),
+                    'source_sha': old['predecessor']['source_sha'] if segment else manifest['source_sha'],
                     "dispatch_started_at": time.time()}
 
         shard = self.store.update_design(manifest["id"], row["owner"], row["id"], reserve)

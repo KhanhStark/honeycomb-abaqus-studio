@@ -214,6 +214,8 @@ def freeze(manifest, velocity, duration, mesh_factor, evidence):
         for key in ("core_centre_seed", "core_outer_seed", "skin_centre_seed", "skin_outer_seed", "reentrant_depth_seed"):
             setattr(model, key, getattr(model, key) * mesh_factor)
         model = ModelSpec.model_validate(model.model_dump())
+        if row['status'] != 'pending' and model_hashes(model)['physics_hash'] != row['physics_hash']:
+            raise ValueError('Cannot change inputs of an already dispatched configuration during freeze')
         row.update(model=model.model_dump(), **model_hashes(model))
     manifest.update(frozen=True, velocity_m_s=velocity, duration_s=duration,
                     mesh_factor=mesh_factor, gates=evidence)
