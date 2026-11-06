@@ -22,10 +22,11 @@ int main(void) {
     for (int i = 0; i < 256; ++i)
         vexternaldb_(&op, integers, &ni, reals, &nr);
     assert(integers[5] == 1);
-    assert(integers[4] == 2);
-    op = 4;
+    assert(integers[4] == 0);
+    op = 2;
     vexternaldb_(&op, integers, &ni, reals, &nr);
-    assert(integers[5] == 0 && "restart must not carry into the zero-time shutdown increment");
+    assert(integers[5] == 0 && "restart must be cleared before termination");
+    assert(integers[4] == 2);
     /* Abaqus performs a final zero-time increment after termination is requested. */
     integers[4] = 0;
     integers[3] = 257;

@@ -23,6 +23,8 @@ void vexternaldb_(const int *operation, int *integers, const int *integer_count,
     static int pending = 0;
     static int initialized = 0;
     static unsigned int polls = 0;
+    static double checkpoint_time = 0.;
+    static int checkpoint_increment = 0;
     char stop_path[PATH_MAX], ack_path[PATH_MAX];
     if (!initialized) {
         char metadata[PATH_MAX];
@@ -42,20 +44,27 @@ void vexternaldb_(const int *operation, int *integers, const int *integer_count,
     if (*operation == 0) { pending = 0; polls = 0; }
     if (*operation == 2 && pending == 2)
         integers[5] = 0; /* checkpoint is already written; no restart from the shutdown increment */
-    if (*operation == 2 && pending == 0 && (++polls % 256 == 0) &&
-        access(stop_path, F_OK) == 0) {
-        /* Request both actions at SetupIncrement. Abaqus documents this as a
-         * supported termination point and it avoids the damage-model cleanup
-         * crash observed when status is changed from EndIncrement. */
-        pending = 2;
-        integers[5] = 1; /* write restart at the end of this increment */
+    if (*operation == 2 && pending == 1) {
+        /* The previous increment already wrote the restart. Clear the flag
+         * before requesting termination so Abaqus does not emit a second
+         * restart frame for its zero-time shutdown increment. */
+        integers[5] = 0;
         integers[4] = 2; /* terminate analysis through the supported solver API */
+        pending = 2;
         FILE *ack = fopen(ack_path, "w");
         if (ack) {
-            fprintf(ack, "{\"simulation_time_s\":%.17g,\"increment\":%d}\n", reals[1], integers[3]);
+            fprintf(ack, "{\"simulation_time_s\":%.17g,\"increment\":%d}\n",
+                    checkpoint_time, checkpoint_increment);
             fclose(ack);
         }
     }
-    if (*operation == 4 && pending == 2)
-        integers[5] = 0; /* do not carry the restart request into the zero-time shutdown increment */
+    if (*operation == 2 && pending == 0 && (++polls % 256 == 0) &&
+        access(stop_path, F_OK) == 0) {
+        /* Schedule the restart one increment before termination. Abaqus then
+         * sees no restart request on the final zero-time increment. */
+        pending = 1;
+        integers[5] = 1; /* write restart at the end of this increment */
+        checkpoint_time = reals[1];
+        checkpoint_increment = integers[3];
+    }
 }
