@@ -40,6 +40,8 @@ void vexternaldb_(const int *operation, int *integers, const int *integer_count,
     if (!control_path(stop_path, sizeof(stop_path), "continuation.stop") ||
         !control_path(ack_path, sizeof(ack_path), "continuation-stop-ack.json")) return;
     if (*operation == 0) { pending = 0; polls = 0; }
+    if (*operation == 2 && pending == 2)
+        integers[5] = 0; /* checkpoint is already written; no restart from the shutdown increment */
     if (*operation == 2 && pending == 0 && (++polls % 256 == 0) &&
         access(stop_path, F_OK) == 0) {
         pending = 1;

@@ -31,6 +31,7 @@ int main(void) {
     reals[2] = 0.;
     op = 2;
     vexternaldb_(&op, integers, &ni, reals, &nr);
+    assert(integers[5] == 0 && "restart must not be rewritten during the zero-time shutdown increment");
     op = 4;
     vexternaldb_(&op, integers, &ni, reals, &nr);
     assert(integers[4] == 0 && "termination was requested again during shutdown");
