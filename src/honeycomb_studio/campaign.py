@@ -58,6 +58,9 @@ def model_hashes(model):
 
 
 def record(model, role, index, owner, varied):
+    # Validate defaults as explicit values before freezing JSON identities. Otherwise
+    # e.g. a float default20 is serialized as20, then a worker parses it as20.0.
+    model = ModelSpec.model_validate(model.model_dump())
     return {"id": f"{role}-{index:04d}", "role": role, "owner": owner,
             "repository": owner + "/honeycomb-abaqus-studio", "varied_parameters": varied,
             **model_hashes(model), "model": model.model_dump(),

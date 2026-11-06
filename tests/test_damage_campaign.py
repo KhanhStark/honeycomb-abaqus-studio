@@ -1,5 +1,6 @@
 import copy
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,15 @@ from honeycomb_studio.campaign import (
     reference_model,
 )
 from honeycomb_studio.models import BatchSpec, ModelSpec, digest
+
+
+def test_campaign_identity_survives_json_and_worker_model_validation():
+    manifest = campaign_manifest()
+    for design in manifest['pilot_designs'] + manifest['designs']:
+        transported = json.loads(json.dumps(design))
+        worker_model = BatchSpec.model_validate(one_run_spec(transported)).model
+        assert digest(transported['model']) == digest(worker_model.model_dump()), design['id']
+        assert transported['physics_hash'] == digest(worker_model.resolved()), design['id']
 
 
 def test_reference_contract_units_and_identity():
