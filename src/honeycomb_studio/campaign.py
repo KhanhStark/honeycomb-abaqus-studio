@@ -193,6 +193,7 @@ def freeze(manifest, velocity, duration, mesh_factor, evidence):
                                 history_intervals=round(duration / .000002))
         for key in ("core_centre_seed", "core_outer_seed", "skin_centre_seed", "skin_outer_seed", "reentrant_depth_seed"):
             setattr(model, key, getattr(model, key) * mesh_factor)
+        model = ModelSpec.model_validate(model.model_dump())
         row.update(model=model.model_dump(), **model_hashes(model))
     manifest.update(frozen=True, velocity_m_s=velocity, duration_s=duration,
                     mesh_factor=mesh_factor, gates=evidence)
