@@ -116,9 +116,11 @@ def admission(manifest, design):
 
 
 def available_slots(capacity, owner_jobs, reserved=0):
-    """Owner quota includes every workflow in every repository, plus uncertain dispatches."""
-    occupied = sum(j.get("status") in ACTIVE for j in owner_jobs)
-    return max(0, min(20, capacity) - occupied - reserved)
+    """Apply the solver budget and shared owner quota independently."""
+    active = [j for j in owner_jobs if j.get("status") in ACTIVE]
+    # Unclassified observations count conservatively against both limits.
+    solvers = sum(j.get("campaign_solver", True) for j in active)
+    return max(0, min(min(20, capacity) - solvers - reserved, 20 - len(active) - reserved))
 
 
 def ramp_capacity(manifest):
@@ -173,7 +175,10 @@ def page_jobs(github, *, warnings=None):
                 result = client.request("GET", f"/repos/{repo['full_name']}/actions/runs/{run['id']}/jobs?per_page=100")
                 if result.get("total_count", 0) > 100:
                     raise ValueError("Workflow job inventory exceeds bounded admission audit")
-                jobs.extend(result["jobs"])
+                workflow = (run.get('path') or '').split('@')[0]
+                is_solver = (repo['full_name'] == github.repository and
+                             (not workflow or workflow == '.github/workflows/core-damage-worker.yml'))
+                jobs.extend({**job, 'campaign_solver': is_solver} for job in result["jobs"])
     return jobs
 
 

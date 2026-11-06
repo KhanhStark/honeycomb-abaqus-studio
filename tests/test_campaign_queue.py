@@ -3,7 +3,14 @@ import copy
 import pytest
 
 from honeycomb_studio.campaign import campaign_manifest
-from honeycomb_studio.campaign_queue import admission, apply_outcome, available_slots, claim, ramp_capacity
+from honeycomb_studio.campaign_queue import (
+    admission,
+    apply_outcome,
+    available_slots,
+    claim,
+    page_jobs,
+    ramp_capacity,
+)
 
 
 def test_claim_cannot_start_duplicate_or_mismatched_continuation():
@@ -51,6 +58,36 @@ def test_quota_counts_all_active_jobs_and_reserved_dispatches():
     assert available_slots(20, jobs, reserved=2) == 4
     assert available_slots(8, jobs) == 0
     assert available_slots(200, [], reserved=1) == 19
+
+
+def test_controller_does_not_consume_the_solver_budget_but_still_uses_owner_quota():
+    controller = {'status': 'in_progress', 'campaign_solver': False}
+    worker = {'status': 'in_progress', 'campaign_solver': True}
+    assert available_slots(1, [controller]) == 1
+    assert available_slots(1, [controller, worker]) == 0
+    assert available_slots(20, [controller] * 19) == 1
+    assert available_slots(20, [controller] * 20) == 0
+    assert available_slots(1, [controller], reserved=1) == 0
+
+
+def test_actions_inventory_separates_controller_from_worker_and_unknown_workflows():
+    class Actions:
+        repository = 'xuankhanh24/honeycomb-abaqus-studio'
+        runs = [{'id': 1, 'path': '.github/workflows/core-damage-controller.yml'}]
+
+        def request(self, method, path, **kwargs):
+            if path.startswith('/users/'):
+                return [{'full_name': self.repository}]
+            if '/jobs?' in path:
+                return {'total_count': 1, 'jobs': [{'status': 'in_progress'}]}
+            return {'total_count': len(self.runs), 'workflow_runs': self.runs} if 'status=in_progress' in path else {}
+
+    github = Actions()
+    assert available_slots(1, page_jobs(github)) == 1
+    github.runs.append({'id': 2, 'path': '.github/workflows/core-damage-worker.yml'})
+    assert available_slots(1, page_jobs(github)) == 0
+    github.runs[-1] = {'id': 2}
+    assert available_slots(1, page_jobs(github)) == 0
 
 
 def test_checkpoint_resume_keeps_model_identity():

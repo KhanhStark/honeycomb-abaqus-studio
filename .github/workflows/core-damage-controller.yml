@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ vars.CORE_DAMAGE_SOURCE_SHA }}
+          ref: ${{ vars.CORE_DAMAGE_CONTROLLER_SOURCE_SHA || vars.CORE_DAMAGE_SOURCE_SHA }}
           persist-credentials: false
       - uses: astral-sh/setup-uv@v10.3.0
       - run: uv sync --locked --extra cloud --extra campaign

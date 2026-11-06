@@ -24,6 +24,14 @@ Archive INP/ODB/log/checkpoint with checksums, consolidated CSV and per-design i
 
 ## Implementation record
 
+### Deployment qualification, 2026-11-06
+
+- Frozen solver source `da92733765fa95f7604516b4087d324f921ab098` passed native material validation, clean Explicit stop, damage-state continuity and checksummed restore on a different runner in Actions run `42151438827`.
+- GitHub App access is verified on all eight repositories. The five new OIDC subjects include immutable owner/repository IDs required by their GitHub tokens; their configuration is restricted to the approved repository and `main` branch.
+- `CORE_DAMAGE_SOURCE_SHA` pins worker physics and runtime qualification. `CORE_DAMAGE_CONTROLLER_SOURCE_SHA`, when set, independently pins orchestration fixes; it falls back to the worker source. A controller update does not relabel solver evidence or change dispatched worker source.
+- Solver-stage budgets are independent of the shared owner20 runner quota. Controllers and other workflows consume runner quota but do not consume the campaign solver budget. Missing workflow metadata is counted conservatively against both.
+- The earlier setup notes below are historical. Actual numerical qualification and production progress are recorded in the durable campaign catalog.
+
 2026-11-06: schema, material deck adapter, analytic cone, per-part energy and connected rear-face metrics implemented. Reproducible 400-design draft generated at C:/UET/DO_AN/output/core-damage-v2-20261106/campaign.json. Local CAE exits before build starts; Linux validation is required. All eight CLI identities authenticated by the human. Five new repository/Actions/OIDC/App setups remain to be verified. Production is not dispatched.
 
 ### Review and verification, 2026-11-06
