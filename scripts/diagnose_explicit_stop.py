@@ -8,6 +8,9 @@ from native_cloud_worker import native_runtime
 from verify_explicit_recover import BUILD
 
 from honeycomb_studio import solver
+from honeycomb_studio.cloud_continuation import checkpoint_inventory, verify_solver_cleanup
+from honeycomb_studio.data import history_continuity
+from honeycomb_studio.engine import ADAPTERS
 
 ROOT = Path('/tmp/honeycomb-stop-diagnostic')
 MINIMAL = r'''
@@ -78,14 +81,11 @@ def main():
         local_shell = ROOT / 'mpi_local_shell.py'
         local_shell.write_text(LOCAL_SHELL)
         local_shell.chmod(0o755)
-        main_thread = '#include <SMAAspUserSubroutines.h>\n' + MINIMAL.replace(
-            'static int stopped = 0;', 'static int stopped = 0;\n    if (get_thread_id() != 0) return;')
-        main_utility = '#include <SMAAspUserSubroutines.h>\n' + UTILITY.replace(
-            'static int pending = 0;', 'static int pending = 0;\n    if (get_thread_id() != 0) return;')
-        cases = [('minimal_mpi4_local', 4, MINIMAL, 'MPI', []),
-                 ('main_threads4', 4, main_thread, 'THREADS', []),
-                 ('main_utility_threads4', 4, main_utility, 'THREADS', []),
-                 ('loop_threads4', 4, MINIMAL, 'THREADS', ['parallel=loop'])]
+        step_control = Path('scripts/linux_media/continuation_control.c').read_text().replace(
+            'integers[4] = 2;', 'integers[4] = 1;').replace(
+            'access(stop_path, F_OK) == 0)', 'access(stop_path, F_OK) == 0 && reals[1] > .02)')
+        cases = [('step_threads4', 4, MINIMAL.replace('i[4] = 2;', 'i[4] = 1;'), 'THREADS', []),
+                 ('checkpoint_step_threads4', 4, step_control, 'THREADS', [])]
         for name, cpus, source, mode, extra in cases:
             folder = ROOT / name
             folder.mkdir()
@@ -102,6 +102,8 @@ def main():
                 callback = folder / 'diagnostic.cpp'
                 callback.write_text(source)
                 args.append('user=' + str(callback))
+            if name.startswith('checkpoint_'):
+                (folder / 'continuation.stop').touch()
             print('DIAGNOSTIC starting ' + name, flush=True)
             try:
                 with (folder / 'solver.log').open('w') as log:
@@ -113,6 +115,11 @@ def main():
                            stop_requested='exit as per user request in vexternaldb' in text,
                            utility_called='analysis is terminated from user subroutine' in text,
                            state=solver.sta_progress(folder / 'recover_probe.sta', .06))
+                if name.startswith('checkpoint_') and not row['crash_markers']:
+                    try:
+                        row['recovery'] = recover_step_checkpoint(executable, folder, callback)
+                    except (RuntimeError, ValueError, OSError, subprocess.SubprocessError) as error:
+                        row['recovery'] = {'passed': False, 'error': str(error)}
             except subprocess.TimeoutExpired:
                 row = dict(case=name, timeout=True)
             results.append(row)
@@ -120,6 +127,44 @@ def main():
             (ROOT / 'results.json').write_text(json.dumps(results, indent=2))
     Path('output').mkdir(exist_ok=True)
     Path('output/explicit-stop-diagnostic.json').write_text(json.dumps(results, indent=2))
+
+
+def recover_step_checkpoint(executable, folder, callback):
+    """A deliberately shortened step is never accepted as a completed simulation."""
+    verify_solver_cleanup(folder / 'solver.log')
+    acknowledgment = json.loads((folder / 'continuation-stop-ack.json').read_text())
+    if not .02 < acknowledgment['simulation_time_s'] < .06:
+        raise ValueError('Checkpoint did not interrupt the intended time window')
+    checkpoint_inventory(folder, 'recover_probe')
+    (folder / 'continuation.stop').unlink()
+    for lock in folder.glob('*.lck'):
+        lock.unlink()
+    reader = ADAPTERS / 'checkpoint_history.py'
+    def history(name):
+        destination = folder / name
+        subprocess.run(solver.command(str(executable), 'python', str(reader),
+                       str(folder / 'recover_probe.odb'), str(destination)), cwd=folder,
+                       check=True, timeout=120)
+        return json.loads(destination.read_text())
+    before = history('history-before.json')
+    with (folder / 'recover.log').open('w') as log:
+        subprocess.run(solver.command(str(executable), 'job=recover_probe', 'recover', 'cpus=4',
+                       'double=both', 'user=' + str(callback), 'interactive'), cwd=folder,
+                       stdout=log, stderr=subprocess.STDOUT, check=True, timeout=240)
+    verify_solver_cleanup(folder / 'recover.log')
+    state = solver.sta_progress(folder / 'recover_probe.sta', .06)
+    if not state.get('solver_success') or state.get('simulation_time_s', 0) < .06:
+        raise ValueError('Recover did not complete the original duration')
+    after = history('history-after.json')
+    integrity = history_continuity(after, {'duration': .06, 'history_intervals': 1000})
+    if not integrity['passed']:
+        raise ValueError('Recovered history has gaps')
+    final = {(r['step'], r['region'], r['variable']): r['data'] for r in after}
+    for row in before:
+        values = final.get((row['step'], row['region'], row['variable']), [])
+        if values[:len(row['data'])] != row['data']:
+            raise ValueError('Recovery changed the original history prefix')
+    return {'passed': True, 'after': state, 'history_integrity': integrity}
 
 
 if __name__ == '__main__':

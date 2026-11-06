@@ -185,11 +185,21 @@ ETA được tính sau pilot từ thời gian build/solve/upload thực đo, ph�
 
 1. Giữ controller tắt trong khi đổi catalog; lưu lịch sử các lượt cũ, không gán lại bằng chứng cũ cho mô hình H20 mới.
 2. Commit/publish source mới và chạy qualification đúng source/runtime; cập nhật pin worker/controller tương ứng trên tám repo. Kiểm tra hiện có chưa thay cho bằng chứng FE của source mới.
-3. Bổ sung chế độ **vận tốc cố định 8 m/s** cho đường chạy toàn bộ. Nhánh full cũ còn danh sách vận tốc fallback; phải chặn trước khi bật, không chỉ dựa vào nhánh pilot-only.
-4. Chế độ toàn bộ phải giữ **8 ms là mục tiêu**, 12 ms là diagnostic; chặn việc tự chuyển dữ liệu chính sang thời gian khác khi kiểm tra không đạt.
+3. Đã triển khai khóa **vận tốc cố định 8 m/s** cho đường chạy toàn bộ và bỏ vận tốc fallback. Cần qualification đúng source trước khi dùng.
+4. Đã triển khai **8 ms là thời gian chính**, 12 ms là diagnostic; kiểm tra không đạt sẽ dừng để điều tra. Lưới được chọn phải có kiểm tra 8/12 ms riêng trước độ nhạy hư hỏng.
 5. Đổi execution_scope từ pilot sang full chỉ khi có lệnh thực thi toàn bộ và các điều kiện phần mềm trên đã được xác minh. Trong lúc chỉ lập kế hoạch, scope vẫn là pilot và enabled vẫn false.
 6. Bảo đảm metadata pilot ghi foil là biến thay đổi giữa ba lượt; vận tốc 8 m/s thuộc nhóm cố định. Khóa schema danh sách 400 và cổng mở nhãn test.
 7. Chạy thử mất kết nối/upload lại, restart controller, phục hồi runner khác và chống trùng trước khi mở rộng công suất.
-8. Chuyển bộ chọn bổ sung hiện tại từ một đợt 80 mẫu sang tối đa bốn đợt 20 mẫu, có đánh giá lại sau mỗi đợt; lưu riêng mô hình, Pareto, lý do chọn điểm và tiêu chí dừng. Áp dụng cách chọn 20 điểm xác nhận đã nêu và khóa nhãn test trong quá trình này.
+8. Đã triển khai tối đa bốn đợt 20 mẫu, mỗi đợt 10 uncertainty + 6 Pareto + 4 sparse, có đánh giá lại sau mỗi đợt. Bộ chọn 20 điểm xác nhận loại cấu hình đã biết/trùng, giữ hai cực trị, sáu điểm thỏa hiệp và mười hai điểm phủ khoảng trống mục tiêu. Các bước này vẫn phải đi qua kiểm tra tích hợp và khóa nhãn test như kế hoạch.
+
+### Tình trạng kiểm chứng cơ chế dừng
+
+Kiểm thử phần mềm tại commit `ec09e28c`: 336 passed, 1 skipped trên Windows; Ruff và ty đạt. Kiểm thử không thay thế qualification Abaqus.
+
+- [Run 42240714325](https://github.com/xuankhanh24/honeycomb-abaqus-studio/actions/runs/42240714325): không callback/4 luồng hoàn tất; callback tối giản/1 CPU dừng sạch; callback tối giản/4 luồng lỗi bộ nhớ. MPI chưa khởi động solver vì thiếu lệnh ssh.
+- [Run 42244271427](https://github.com/xuankhanh24/honeycomb-abaqus-studio/actions/runs/42244271427): TLS, đổi thời điểm yêu cầu dừng và XPLB_EXIT đều vẫn lỗi bộ nhớ ở 4 luồng; XPLB_EXIT/1 CPU không có dấu crash. Workflow chẩn đoán xanh chỉ xác nhận đã thu log, không chứng nhận cơ chế dừng đạt.
+- [Run 42246374349](https://github.com/xuankhanh24/honeycomb-abaqus-studio/actions/runs/42246374349): đang kiểm tra MPI cục bộ/4 tiến trình, yêu cầu dừng chỉ từ luồng chính và parallel=loop. Chưa có kết quả tại thời điểm ghi.
+
+Chiến dịch H20 vẫn tắt, ba pilot và 400 cấu hình ban đầu chưa được gửi. Chưa có bằng chứng phá hủy panel H20 hợp lệ. Phải xác minh dừng sạch, lịch sử không mất và trạng thái hư hỏng được phục hồi trên runner khác trước khi mở pilot.
 
 **Tóm tắt:** kiểm chứng → 3 pilot → hội tụ/độ nhạy → 40 mẫu trong bộ 400 → 360 mẫu còn lại → tối đa 80 bổ sung → kiểm tra độc lập → 20 FE xác nhận → dữ liệu và báo cáo tập trung.
