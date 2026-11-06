@@ -48,11 +48,9 @@ honeycomb-abaqus-studio/
 └── uv.lock                  # Dependency Python đã khóa
 ```
 
-Máy phát triển còn có `.venv/`, `.tools/`, `web/node_modules/`, `artifacts/` và `output/`: môi trường, bản đóng gói và kết quả cục bộ do công cụ tạo. `.gitignore` tách chúng khỏi mã nguồn trên GitHub. Xem [sơ đồ workspace và nơi lưu tệp](docs/development/WORKSPACE_LAYOUT.md).
-
 ## Chạy bản Windows
 
-Giải nén đầy đủ [bản 0.2.0 preview](https://github.com/xuankhanh24/honeycomb-abaqus-studio/releases/tag/v0.2.0-preview) vào đường dẫn ASCII, ví dụ `C:/HoneycombStudio`, rồi mở `HoneycombStudio.exe`. Gói có runtime .NET/WinAppSDK và Python riêng; cần Abaqus cùng license phù hợp. Đây là bản preview nghiên cứu chưa ký mã.
+Giải nén đầy đủ [bản 0.2.0 preview](https://github.com/xuankhanh24/honeycomb-abaqus-studio/releases/tag/v0.2.0-preview), rồi mở `HoneycombStudio.exe`. Gói có runtime .NET/WinAppSDK và Python riêng; cần Abaqus cùng license phù hợp. Đây là bản preview nghiên cứu chưa ký mã.
 
 ## Chạy từ mã nguồn
 
@@ -67,13 +65,7 @@ cd honeycomb-abaqus-studio
 
 Ứng dụng kết nối hoặc khởi động engine nền. Xem [khởi chạy độc lập](docs/guides/INDEPENDENT_LAUNCH.md) để hiểu vòng đời ứng dụng và solver.
 
-| Thiết lập mặc định trên Windows | Đường dẫn |
-| --- | --- |
-| Thư viện mô phỏng | `C:/UET/DO_AN/honeycomb-data` |
-| Lệnh Abaqus | `C:/SIMULIA/Commands/abaqus.bat` |
-| Session và cấu hình người dùng | `%LOCALAPPDATA%/HoneycombStudio` |
-
-Đổi thư mục dữ liệu và lệnh Abaqus trong **Backup và cài đặt** cho lần khởi động engine tiếp theo. Giữ nguyên thư mục ID của job và bản giữ lại `honeycomb-data-retained/`.
+Cấu hình nơi lưu dữ liệu và lệnh Abaqus trong **Backup và cài đặt**; thay đổi có hiệu lực ở lần khởi động engine tiếp theo.
 
 ## Phát triển web
 
