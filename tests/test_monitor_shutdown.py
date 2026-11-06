@@ -52,7 +52,12 @@ def test_recover_eta_uses_only_progress_since_checkpoint(tmp_path, monkeypatch):
     store.db.close()
 
 
-def test_checkpoint_stop_uses_solver_callback_and_clears_predecessor_markers(tmp_path, monkeypatch):
+@pytest.mark.parametrize('solver_log,expected', [
+    ('Exit as per user request in VEXTERNALDB\n', Interrupted),
+    ('double free or corruption (out)\n', RuntimeError),
+])
+def test_checkpoint_stop_uses_solver_callback_and_clears_predecessor_markers(
+        tmp_path, monkeypatch, solver_log, expected):
     store = Store(tmp_path)
     batch = store.create(BatchSpec())
     run = store.list('runs', batch['id'])[0]
@@ -72,6 +77,7 @@ def test_checkpoint_stop_uses_solver_callback_and_clears_predecessor_markers(tmp
         calls.append(args[1])
         assert not (raw / 'continuation.stop').exists()
         assert not (raw / 'continuation-stop-ack.json').exists()
+        Path(args[3]).write_text(solver_log)
         return SimpleNamespace()
     monkeypatch.setattr('honeycomb_studio.engine.solver.launch', launch)
     monkeypatch.setattr('honeycomb_studio.engine.solver.owner', lambda _: None)
@@ -80,7 +86,7 @@ def test_checkpoint_stop_uses_solver_callback_and_clears_predecessor_markers(tmp
     monkeypatch.setattr('honeycomb_studio.engine.solver.refresh_owned_tree', lambda _: None)
     monkeypatch.setattr(engine, '_stopping', lambda _: True)
     monkeypatch.setattr(engine.shutdown, 'wait', lambda _: None)
-    with pytest.raises(Interrupted):
+    with pytest.raises(expected):
         engine._monitor(run, attempt, 'solving', ['job=fixture'])
     assert len(calls) == 1 and calls[0] == ['job=fixture', 'user=' + str(raw / 'fixture.continuation.c')]
     assert (raw / 'continuation.stop').exists()
