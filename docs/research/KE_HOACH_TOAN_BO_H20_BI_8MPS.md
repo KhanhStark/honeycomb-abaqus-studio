@@ -92,7 +92,7 @@ Cửa sổ đáp ứng nghiên cứu: chuyển vị cực đại mặt sau của
 
 Danh sách từng lượt đã xuất tại:
 
-`C:/UET/DO_AN/output/core-damage-v2-20261106/planned-400-h20-sphere-8mps-8ms.csv`
+`C:/UET/DO_AN/output/core-damage-v2-20261107/planned-400-h20-sphere-8mps-8ms-ofat60.csv`
 
 CSV có mã cấu hình, nhóm, phương pháp, giai đoạn 40/360, repo, các trường thay đổi, bốn biến, indent suy ra, các thông số cố định và hash đầu vào. Trường lưới và thời gian còn là ứng viên cho đến khi qua kiểm tra; sau khi khóa phải cập nhật danh sách và hash trước khi dispatch.
 
@@ -104,14 +104,14 @@ Mỗi repo nhận 40 phát triển và 10 kiểm tra. 40 mẫu kiểm tra phủ 
 
 | Chủ sở hữu repo honeycomb-abaqus-studio | Phát triển | Kiểm tra giữ riêng | Trong 40 mẫu phủ miền | Tổng ban đầu |
 |---|---:|---:|---:|---:|
-| luukhanh24 | 40 | 10 | 9 | 50 |
-| KhanhStark | 40 | 10 | 6 | 50 |
-| xuankhanh24 | 40 | 10 | 3 | 50 |
-| dzdeptrai390 | 40 | 10 | 4 | 50 |
-| khanhstarkpubg-ux | 40 | 10 | 4 | 50 |
-| xuankhanh054-eng | 40 | 10 | 7 | 50 |
-| starkdzdz-eng | 40 | 10 | 5 | 50 |
-| luukhank574-design | 40 | 10 | 2 | 50 |
+| luukhanh24 | 40 | 10 | 8 | 50 |
+| KhanhStark | 40 | 10 | 4 | 50 |
+| xuankhanh24 | 40 | 10 | 5 | 50 |
+| dzdeptrai390 | 40 | 10 | 3 | 50 |
+| khanhstarkpubg-ux | 40 | 10 | 9 | 50 |
+| xuankhanh054-eng | 40 | 10 | 6 | 50 |
+| starkdzdz-eng | 40 | 10 | 1 | 50 |
+| luukhank574-design | 40 | 10 | 4 | 50 |
 | **Tổng** | **320** | **80** | **40, đã nằm trong 320** | **400** |
 
 ### Cấp slot và chạy nối

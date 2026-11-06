@@ -28,6 +28,24 @@ extern "C" void vexternaldb_(const int *op, int *i, const int *ni,
     }
 }
 '''
+UTILITY = r'''
+extern "C" void xplb_exit_();
+extern "C" void vexternaldb_(const int *op, int *i, const int *ni,
+                              double *r, const int *nr) {
+    static int pending = 0;
+    static int checkpoint = 0;
+    if (*ni < 6 || *nr < 3) return;
+    if (*op == 2 && pending && i[3] > checkpoint) {
+        i[5] = 0;
+        xplb_exit_();
+    }
+    if (*op == 2 && !pending && r[0] > .02) {
+        i[5] = 1;
+        checkpoint = i[3];
+        pending = 1;
+    }
+}
+'''
 CRASHES = ('segmentation fault', 'double free', 'corrupted unsorted',
            'corruption (', 'invalid pointer', 'signal 6', 'signal 11')
 
@@ -41,11 +59,10 @@ def main():
     with native_runtime(ROOT, continuation=True) as executable:
         subprocess.run(solver.command(str(executable), 'cae', 'noGUI=' + str(build / 'build.py')),
                        cwd=build, check=True, timeout=120)
-        cases = [('complete_threads4', 4, None, None),
-                 ('minimal_threads1', 1, MINIMAL, 'THREADS'),
-                 ('minimal_threads4', 4, MINIMAL, 'THREADS'),
-                 ('io_threads4', 4, '#define DIAGNOSTIC_IO\n' + MINIMAL, 'THREADS'),
-                 ('minimal_mpi4', 4, MINIMAL, 'MPI')]
+        cases = [('tls_threads4', 4, MINIMAL.replace('static int stopped', 'static __thread int stopped'), 'THREADS'),
+                 ('setup_threads4', 4, MINIMAL.replace('*op == 4', '*op == 2'), 'THREADS'),
+                 ('utility_threads4', 4, UTILITY, 'THREADS'),
+                 ('utility_threads1', 1, UTILITY, 'THREADS')]
         for name, cpus, source, mode in cases:
             folder = ROOT / name
             folder.mkdir()
@@ -67,6 +84,7 @@ def main():
                 row = dict(case=name, exit_code=process.returncode,
                            crash_markers=[marker for marker in CRASHES if marker in text],
                            stop_requested='exit as per user request in vexternaldb' in text,
+                           utility_called='xplb_exit' in text,
                            state=solver.sta_progress(folder / 'recover_probe.sta', .06))
             except subprocess.TimeoutExpired:
                 row = dict(case=name, timeout=True)
