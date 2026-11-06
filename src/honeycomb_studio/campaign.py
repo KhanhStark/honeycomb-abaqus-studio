@@ -38,7 +38,7 @@ def reference_model(**updates) -> ModelSpec:
                   ball_size_mode="diameter", ball_diameter=13.1, ball_radius=6.55,
                   loading="velocity", velocity_m_s=8,
                   friction=.2, gravity=0, gap=.1, adiabatic=True, initial_temperature_C=20,
-                  cpus=4, mesh_preset="custom", fine_radius=25, skin_patch_half=25,
+                  cpus=4, mesh_preset="custom", fine_radius=22, skin_patch_half=12,
                   skin_self_contact=True, duration=INITIAL_DURATION_S, field_intervals=800, history_intervals=4000,
                   field_variables=["U", "V", "S", "PEEQ", "STATUS", "SDEG", "DMICRT", "TEMP", "CFORCE"],
                   history_variables=["ALLAE", "ALLIE", "ALLKE", "ALLPD", "ALLDMD", "ALLSE", "ALLVD",

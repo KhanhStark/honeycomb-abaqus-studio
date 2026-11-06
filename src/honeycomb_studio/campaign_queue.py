@@ -129,7 +129,7 @@ def ramp_capacity(manifest):
     """Probe the next stage only after successful, overlapping solver and archive evidence."""
     stage = manifest.get('capacity_stage', 8)
     rows = [r for r in manifest['designs'] + manifest['pilot_designs']
-            if r.get('archive_verified') and r.get('quality', {}).get('passed')
+            if not r.get('reused_from') and r.get('archive_verified') and r.get('quality', {}).get('passed')
             and r.get('solver_started_at') and r.get('solver_finished_at')]
     events = sorted([(r['solver_started_at'], 1) for r in rows]
                     + [(r['solver_finished_at'], -1) for r in rows])

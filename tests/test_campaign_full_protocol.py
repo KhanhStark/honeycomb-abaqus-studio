@@ -58,6 +58,36 @@ def test_failed_eight_ms_time_gate_does_not_allocate_sixteen_ms():
     assert not any(row['model']['duration'] > .012 for row in result['designs'])
 
 
+def test_user_selected_actions_mesh_skips_refinement_without_claiming_convergence():
+    manifest = campaign_manifest()
+    manifest.update(phase='time', execution_scope='full', selected_velocity_m_s=8., trial_duration_s=.008,
+                    mesh_policy={'mode': 'reuse_actions_reference', 'source_job_id': 'previous-actions'})
+    for row in manifest['pilot_designs']:
+        accepted(row)
+    manifest['designs'].extend(accepted(row) for row in qualification_designs(8., .012))
+    result = advance(manifest)
+    assert result['phase'] == 'sensitivity' and result['selected_mesh_factor'] == 1.
+    assert result['gates']['mesh']['convergence_verified'] is False
+    assert not any(row.get('purpose') in ('mesh', 'mesh_time') for row in result['designs'])
+    assert len({row['owner'] for row in result['designs'] if row.get('purpose') == 'sensitivity'}) == 8
+
+
+def test_identical_qualified_control_reuses_verified_bytes_and_preserves_identity():
+    from honeycomb_studio.campaign_protocol import extend_unique
+
+    manifest = campaign_manifest()
+    source = accepted(manifest['pilot_designs'][0])
+    source.update(archive={'kind': 'fixture'}, source_sha='a' * 40, workflow_run_id=11)
+    target = qualification_designs(8., .008, label='sensitivity')[0]
+    extend_unique(manifest, [target])
+    row = manifest['designs'][-1]
+    assert row['id'] != source['id'] and row['physics_hash'] == source['physics_hash']
+    assert row['status'] == 'completed' and row['reused_from']['design_id'] == source['id']
+    assert row['source_sha'] == source['source_sha'] and row['archive'] == source['archive']
+    source['summary']['SEA_core_J_kg'] = -1
+    assert row['summary']['SEA_core_J_kg'] == 100.
+
+
 @pytest.mark.parametrize(('velocity', 'duration'), [(5., .008), (8., .012), (8., .004)])
 def test_freeze_rejects_changes_to_the_fixed_load_and_main_duration(velocity, duration):
     manifest = campaign_manifest()

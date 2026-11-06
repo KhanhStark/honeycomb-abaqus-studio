@@ -2,6 +2,15 @@
 
 Ngày lập: 06/11/2026, múi giờ Asia/Bangkok.
 
+**Điều chỉnh theo yêu cầu mới nhất của người dùng:** dùng lại lưới của job Actions
+`c45a1d75d6174e31890d9e3861419a9c`: lõi 0,7/1,3 mm, mặt 0,75/1,25 mm,
+chiều sâu 1 mm, viên bi 1 mm, bán kính vùng mịn 22 mm, nửa vùng mặt 12 mm,
+S4R/S3R và 5 điểm tích phân bề dày. Bỏ các nhánh tinh lưới 0,75/0,5;
+lựa chọn này không được ghi thành bằng chứng hội tụ lưới mới. Những bài đang
+giải với vùng mịn 25/25 mm giữ nguyên đầu vào và nguồn gốc, chỉ dùng làm chẩn
+đoán bổ sung; bộ 400 dùng đồng nhất lưới được người dùng chọn. Các kiểm tra
+vật liệu, thời gian, năng lượng, trạng thái hư hỏng và tính đủ của dữ liệu vẫn áp dụng.
+
 Cập nhật theo lệnh thực thi: **60 OFAT**, gồm 15 mức/biến không trùng tham chiếu; **259 LHS phát triển**. Đã được phép triển khai toàn bộ khi lần lượt đạt các cổng kiểm chứng. Qualification phục hồi và hạ tầng tám tài khoản đã đạt trên source `ca9ee5448fb312c7d7ed9fac5b4eefde757697b8`; controller đã mở ở pha pilot. Bộ 400 mẫu còn chờ các cổng hội tụ và độ nhạy.
 
 ## 1. Phạm vi và đầu ra
