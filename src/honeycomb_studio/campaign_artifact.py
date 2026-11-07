@@ -42,7 +42,10 @@ class ArtifactRanges(io.RawIOBase):
         count = self.length - self.position if size < 0 else min(size, self.length - self.position)
         if count <= 0:
             return b''
-        if count > 4 * 1024 * 1024 or self.downloaded + count > 16 * 1024 * 1024:
+        # Research output can have a >4 MiB ZIP directory even though only the
+        # small run/STA members are inspected. Keep the total 16 MiB budget;
+        # the native ODB and field bodies are never fetched here.
+        if count > 8 * 1024 * 1024 or self.downloaded + count > 16 * 1024 * 1024:
             raise ValueError('Artifact inspection exceeded its bounded byte budget')
         end = self.position + count - 1
         with self.client.stream('GET', self.url, headers={'Range': f'bytes={self.position}-{end}'}) as response:

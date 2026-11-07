@@ -63,6 +63,29 @@ def test_partial_solver_is_not_accepted_from_a_stale_complete_marker():
         assert inspect_completed_odb(archive, work) is None
 
 
+def test_research_artifact_with_large_zip_directory_still_inspects_only_metadata():
+    blob, work = artifact()
+    buffer = io.BytesIO(blob)
+    with zipfile.ZipFile(buffer, 'a') as archive:
+        for index in range(5000):
+            archive.writestr(f'fields/{index:05d}/' + 'x' * 900 + '.parquet', b'')
+    blob = buffer.getvalue()
+    requested = []
+
+    def transport(request):
+        first, last = map(int, re.fullmatch(r'bytes=(\d+)-(\d+)', request.headers['range']).groups())
+        requested.append(last - first + 1)
+        return httpx.Response(206, content=blob[first:last + 1],
+                              headers={'Content-Range': f'bytes {first}-{last}/{len(blob)}'})
+
+    with httpx.Client(transport=httpx.MockTransport(transport)) as client:
+        with zipfile.ZipFile(ArtifactRanges(client, 'https://storage.example/immutable')) as archive:
+            evidence = inspect_completed_odb(archive, work)
+    assert evidence['solver_success']
+    assert 4 * 1024**2 < max(requested) < 8 * 1024**2
+    assert sum(requested) < 8 * 1024**2
+
+
 @pytest.mark.parametrize('problem', ['different_input', 'missing_odb', 'outside_attempt', 'ambiguous_run'])
 def test_uncertain_or_mismatched_original_output_is_not_recomputed(problem):
     blob, work = artifact(problem)
@@ -97,6 +120,6 @@ def test_range_identity_must_match_the_exact_requested_offsets():
         with pytest.raises(ValueError, match='requested bounded range'):
             ranges.read(1)
         with pytest.raises(ValueError, match='byte budget'):
-            ranges.length = 10 * 1024 * 1024
-            ranges.read(5 * 1024 * 1024)
+            ranges.length = 20 * 1024 * 1024
+            ranges.read(9 * 1024 * 1024)
     assert calls == ['bytes=0-0', 'bytes=50-50']
