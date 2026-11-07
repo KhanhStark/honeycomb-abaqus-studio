@@ -1,11 +1,49 @@
 import json
 
 import numpy as np
+import pytest
 
 from honeycomb_studio.data import consume_spool, verify_export
 from honeycomb_studio.models import BatchSpec
 from honeycomb_studio.research import field_reduction
 from honeycomb_studio.store import write_json
+
+
+@pytest.mark.parametrize('full_fields', [False, True])
+@pytest.mark.parametrize('second_force,expected_error', [(100., 0.), (120., 20.)])
+def test_restarted_frames_at_equal_times_are_checked_independently(
+    tmp_path, full_fields, second_force, expected_error
+):
+    from honeycomb_studio.data import history_summary
+
+    spec = BatchSpec().model.model_copy(update={'duration': .008, 'history_intervals': 4, 'gravity': 0}).resolved()
+    times = [0., .002, .004, .006, .008]
+    values = {'A3': 100. / spec['impact_mass'], 'V3': 0., 'U3': 0.,
+              'ALLKE': 7000., 'ALLIE': 0., 'ALLAE': 0., 'ALLPD': 0.,
+              'ALLSE': 0., 'ALLVD': 0., 'ALLWK': 0., 'ETOTAL': 7000.}
+    histories = [{'step': 'Impact', 'region': 'IMPACTOR' if name in ('A3', 'V3', 'U3') else 'Assembly',
+                  'variable': name, 'description': name, 'data': [[t, value] for t in times]}
+                 for name, value in values.items()]
+    write_json(tmp_path / 'histories.json', histories)
+    write_json(tmp_path / 'inventory.json', {'frames': 6, 'fields': []})
+    write_json(tmp_path / 'export-policy.json', {'full_fields': full_fields})
+    spool = tmp_path / 'spool'
+    spool.mkdir()
+    sequence = 0
+    for frame, resultant in ((2, 100.), (3, second_force)):
+        # Two normal chunks and the shear chunk belong to each frame.
+        for field, value in (('CNORMF', resultant * .8), ('CNORMF', resultant * .15),
+                             ('CSHEARF', resultant * .05)):
+            name = f'{sequence:08d}'
+            np.savez(spool / (name + '.npz'), data=np.array([[0., 0., value]]),
+                     instance_index=np.array([0]))
+            write_json(spool / (name + '.ready'), {'npz': name + '.npz', 'sequence': sequence,
+                'kind': 'field', 'step': 'Impact', 'frame': frame, 'time_s': .004,
+                'field': field, 'instances': ['IMPACTOR-1'], 'components': ['X', 'Y', 'Z']})
+            sequence += 1
+    assert consume_spool(tmp_path) == 6
+    summary, _ = history_summary(tmp_path, spec)
+    assert summary['contact_force_check_max_relative_percent'] == pytest.approx(expected_error)
 
 
 def test_reduced_export_preserves_exact_extremum_labels_and_source_coverage(tmp_path):

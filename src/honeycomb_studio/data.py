@@ -333,7 +333,7 @@ def history_summary(
                     for idx, x in zip(tb["instance_index"].to_pylist(), tb["data"].to_pylist(), strict=False)
                     if (idx != index if spec.get("impactor_shape") == "blunt_cone" else idx == index)
                 )
-                force_checks.append((meta["time_s"], total))
+                force_checks.append((meta.get("step"), meta.get("frame"), meta["time_s"], total))
         if field in ("PEEQ", "S", "U"):
             tb = pf.read(
                 columns=[
@@ -381,20 +381,22 @@ def history_summary(
         if extreme and (key not in extrema or extreme["value"] > extrema[key]["value"]):
             extrema[key] = extreme
         if "impactor_force_z_N" in entry:
-            force_checks.append((entry["time_s"], entry["impactor_force_z_N"]))
+            force_checks.append((entry.get("step"), entry.get("frame"), entry["time_s"], entry["impactor_force_z_N"]))
     summary["field_storage"] = "full_parquet_remote" if remote_count else "reduced" if reduced else "full_parquet"
-    # Chunks for the same frame must be summed before comparing against RP history.
+    # Sum chunks/components within each frame. Explicit recover can retain two
+    # different frames at the same time; their forces must be checked separately.
     if force_checks:
         sums = {}
-        for t, x in force_checks:
-            sums[t] = sums.get(t, 0.0) + x
+        for step, frame, t, x in force_checks:
+            key = (step, frame, t)
+            sums[key] = sums.get(key, 0.0) + x
         # A recovered ODB can span the full duration while missing buffered
         # history. Interpolation across such gaps is not a physical force check.
         acceleration_integrity = history_continuity(
             [h for h in history if h["variable"] == "A3" and "IMPACTOR" in h["region"].upper()], spec
         )
         if acceleration_integrity["passed"]:
-            errors = [abs(x - float(np.interp(t, time, f))) for t, x in sums.items()]
+            errors = [abs(x - float(np.interp(t, time, f))) for (_, _, t), x in sums.items()]
             summary["contact_force_check_max_relative_percent"] = 100 * max(errors) / max(float(f[peak]), 1e-12)
         else:
             summary["contact_force_check_max_relative_percent"] = None
