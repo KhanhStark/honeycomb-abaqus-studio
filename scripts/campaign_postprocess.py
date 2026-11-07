@@ -40,8 +40,28 @@ if _status_spec is None or _status_spec.loader is None:
 _status_reader = importlib.util.module_from_spec(_status_spec)
 _status_spec.loader.exec_module(_status_reader)
 
+# The original ODB/extractor stay frozen. Derived checks use the recorded
+# recovery tool so a corrected frame aggregation also applies to old workers.
+_summary_spec = importlib.util.spec_from_file_location(
+    'honeycomb_studio._campaign_recovery_data',
+    Path(__file__).resolve().parents[1] / 'src/honeycomb_studio/data.py')
+if _summary_spec is None or _summary_spec.loader is None:
+    raise ImportError('Verified recovery summary reader is unavailable')
+_summary_reader = importlib.util.module_from_spec(_summary_spec)
+_summary_spec.loader.exec_module(_summary_reader)
+
 
 class PostprocessOnlyEngine(Engine):
+    def _postprocess(self, r: dict, a: dict, batch: dict):
+        import honeycomb_studio.engine as original_engine
+
+        original_summary = original_engine.history_summary
+        original_engine.history_summary = _summary_reader.history_summary
+        try:
+            return super()._postprocess(r, a, batch)
+        finally:
+            original_engine.history_summary = original_summary
+
     def execute_wave(self, candidates, batch):
         if len(candidates) != 1:
             raise ValueError('Postprocessing requires exactly one original run')

@@ -36,6 +36,31 @@ def fixture(tmp_path):
     return store, design, run, expand(spec)[0]
 
 
+@pytest.mark.parametrize('fails', [False, True])
+def test_old_odb_uses_verified_summary_tool_and_restores_original_import(monkeypatch, fails):
+    import honeycomb_studio.engine as original_engine
+
+    module = tool()
+    original_summary = original_engine.history_summary
+    calls = []
+
+    def postprocess(self, run, attempt, batch):
+        calls.append(original_engine.history_summary)
+        if fails:
+            raise RuntimeError('Retained ODB extraction failed')
+        return 'derived outputs'
+
+    monkeypatch.setattr(module.Engine, '_postprocess', postprocess)
+    engine = object.__new__(module.PostprocessOnlyEngine)
+    if fails:
+        with pytest.raises(RuntimeError, match='Retained ODB'):
+            engine._postprocess({}, {}, {})
+    else:
+        assert engine._postprocess({}, {}, {}) == 'derived outputs'
+    assert calls == [module._summary_reader.history_summary]
+    assert original_engine.history_summary is original_summary
+
+
 def test_completed_solver_without_restart_ack_can_resume_only_postprocessing(tmp_path):
     module = tool()
     store, design, run, _ = fixture(tmp_path)
