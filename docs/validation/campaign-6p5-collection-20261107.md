@@ -28,3 +28,14 @@ Objective maxima and tail stability must be assessed from the new actual histori
 
 Operational cancellation, manifest comparison, source identity, publication and
 dispatch receipts are saved in the two campaign-specific output directories.
+
+## First-fill catalog contention
+
+The first controller filled most owner slots, then a central owner-shard CAS
+exhausted its bounded contention retries. The exact `Catalog is busy` runtime
+error escaped the refill loop and prevented relay. A deterministic regression
+reproduced that interruption (one failure). Refill now records this specific
+transient error alongside uncertain HTTP dispatches and retains durable tickets
+for reconciliation. Other runtime errors still propagate. No native worker or
+scientific input changes. The focused dispatch/relay/queue/6.5 m/s suite passed
+47 tests after the fix, with Ruff and controller type checks passing.

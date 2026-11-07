@@ -310,7 +310,8 @@ def reconcile_analysis(manifest, app):
 
 
 def transient_dispatch_error(exc):
-    return (isinstance(exc, httpx.TransportError) or
+    return (type(exc) is RuntimeError and str(exc) == 'Catalog is busy; retry without changing the request ID'
+            or isinstance(exc, httpx.TransportError) or
             isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code >= 500)
 
 
@@ -340,7 +341,7 @@ def fill_owner_slots(store, app, manifest, rows, capacity, owner, publication_re
     for row in pending[:slots]:
         try:
             dispatcher.reserve(manifest, row)
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, RuntimeError) as exc:
             if not transient_dispatch_error(exc):
                 raise
             # The CAS reservation may already have committed and the POST may

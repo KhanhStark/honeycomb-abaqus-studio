@@ -101,3 +101,39 @@ def test_uncertain_same_ticket_redispatch_does_not_stop_reconciliation(monkeypat
     assert row['dispatch_started_at'] > 0.
     assert row['dispatch_warning'].startswith('Dispatch acknowledgement unavailable')
     assert calls[-1][2]['inputs']['ticket'] == row['ticket']
+
+
+def test_catalog_contention_keeps_refill_and_future_relay_alive(monkeypatch):
+    manifest = campaign_manifest()
+    owner = manifest['designs'][0]['owner']
+    rows = [r for r in manifest['designs'] if r['owner'] == owner][:2]
+    attempted = []
+
+    def reserve(_manifest, row):
+        attempted.append(row['id'])
+        if len(attempted) == 1:
+            raise RuntimeError('Catalog is busy; retry without changing the request ID')
+
+    monkeypatch.setattr(controller, 'page_jobs', lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(controller, 'admission', lambda *_args: True)
+    monkeypatch.setattr(controller, 'Dispatcher', lambda *_args: SimpleNamespace(reserve=reserve))
+    _, observation = controller.fill_owner_slots(None, SimpleNamespace(repository=lambda _: object()),
+                                                manifest, rows, 160, owner)
+    assert attempted == [r['id'] for r in rows]
+    assert observation['dispatch_warnings'][0]['error_class'] == 'RuntimeError'
+    assert observation['dispatch_warnings'][0]['http_status'] is None
+
+
+def test_unknown_runtime_error_still_stops_refill(monkeypatch):
+    manifest = campaign_manifest()
+    row = manifest['designs'][0]
+    monkeypatch.setattr(controller, 'page_jobs', lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(controller, 'admission', lambda *_args: True)
+
+    def reserve(*_args):
+        raise RuntimeError('Scientific contract mismatch')
+
+    monkeypatch.setattr(controller, 'Dispatcher', lambda *_args: SimpleNamespace(reserve=reserve))
+    with pytest.raises(RuntimeError, match='Scientific contract mismatch'):
+        controller.fill_owner_slots(None, SimpleNamespace(repository=lambda _: object()),
+                                    manifest, [row], 160, row['owner'])
