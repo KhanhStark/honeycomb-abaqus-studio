@@ -57,8 +57,16 @@ class ReleaseAssetTransport:
                 or parsed.username or parsed.password or parsed.port not in (None, 443)):
             raise ValueError('Checkpoint API returned an unexpected asset host')
         # This separate client has no GitHub authorization header.
-        with self.client.stream('GET', location) as body:
-            yield body
+        try:
+            with self.client.stream('GET', location) as body:
+                yield body
+        except httpx.HTTPStatusError as exc:
+            # Keep signed download URLs out of the public Actions traceback.
+            safe = httpx.Response(exc.response.status_code, request=httpx.Request('GET', url))
+            raise httpx.HTTPStatusError('Checkpoint transfer HTTP ' + str(safe.status_code),
+                                        request=safe.request, response=safe) from None
+        except httpx.TransportError:
+            raise httpx.ReadError('Checkpoint transfer interrupted') from None
 
 
 def restore_checkpoint(manifest, root, *, transport, sleep=time.sleep, **kwargs):

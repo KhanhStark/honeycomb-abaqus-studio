@@ -124,3 +124,26 @@ def test_changed_bytes_still_fail_original_digest_gate(tmp_path):
         tool.restore_checkpoint(manifest, tmp_path, transport=Transport(), allow_incomplete=True,
                                 sleep=lambda _: None)
     assert not (tmp_path / 'state.bin').exists()
+
+
+def test_body_error_does_not_expose_signed_url():
+    tool = load_tool()
+    _, url = inventory()
+    class Github:
+        repository = 'owner/repo'
+        def access_token(self): return 'test-token'
+        def repo(self, method, path):
+            return {'id': 7, 'assets': [{'id': 11, 'name': 'state.part', 'browser_download_url': url,
+                                        'state': 'uploaded'}]}
+    def handle(request):
+        if request.url.host == 'api.github.com':
+            return httpx.Response(302, headers={'Location': 'https://release-assets.githubusercontent.com/exact?secret=signed-value'})
+        return httpx.Response(504)
+    with httpx.Client(transport=httpx.MockTransport(handle)) as api:
+        github = Github(); github.client = api
+        with httpx.Client(transport=httpx.MockTransport(handle)) as body:
+            with pytest.raises(httpx.HTTPStatusError) as caught:
+                with tool.ReleaseAssetTransport(github, body).stream('GET', url) as response:
+                    response.raise_for_status()
+            assert 'signed-value' not in str(caught.value)
+            assert str(caught.value.request.url) == url
