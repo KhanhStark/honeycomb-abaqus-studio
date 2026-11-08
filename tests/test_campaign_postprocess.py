@@ -426,6 +426,7 @@ def test_finished_extraction_failure_is_not_automatically_recomputed(monkeypatch
     assert design.get('attempt', 0) == 0
     assert updates[-1]['publication_kind'] == 'postprocess'
     assert updates[-1]['postprocess_source_sha'] == 'recovery-tools'
+    assert updates[-1]['bounded_extraction'] is True
 
 def test_retained_checkpoint_recovery_seals_original_state_without_fe(tmp_path, monkeypatch):
     import json

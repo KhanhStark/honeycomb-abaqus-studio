@@ -191,6 +191,7 @@ def route_completed_odb(manifest, row, work, github):
         return False
     Catalog(github).update(ticket_key(manifest['id'], work['ticket']), lambda old: {
         **old, 'publication_kind': 'postprocess', 'postprocess_source_sha': controller_source_sha(),
+        'bounded_extraction': True,
         'publication_status': 'pending', 'publication_workflow_run_id': None,
         'original_solver_evidence': evidence})
     row.update(status='publication_pending', publication_ticket=work['ticket'], ticket=None,
