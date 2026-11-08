@@ -23,7 +23,7 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@v10.3.0
       - run: uv sync --locked --extra cloud
-      - name: Select valid distinct points and verify all 500 Linux identities
+      - name: Select valid distinct points and verify all planned Linux identities
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: uv run --locked --extra cloud python scripts/campaign_prepare_supplement.py
