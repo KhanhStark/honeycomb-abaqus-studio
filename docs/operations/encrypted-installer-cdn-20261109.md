@@ -18,7 +18,11 @@ relay checks for a newer successor before dispatch and reconciles uncertain POST
 
 ## Installer transport
 
-Tool source: `637bbd60d83e05b7a1db39ac8d6d5dc3814baa41`.
+Current tool source: `ec804565b3efa3afb04eaf51405e81fc53ffbff5`.
+The original download probes used `637bbd60d83e05b7a1db39ac8d6d5dc3814baa41`.
+The later source fixes release-tag forwarding through the composite action's
+declared inputs; installer bytes and the CDN downloader are unchanged. See
+`media-action-context-repair-20261109.md` for the two affected preparation runs.
 
 The preparation workflow retrieves the existing ISO and verifies its original
 10,066,642,944-byte size and SHA-256:
