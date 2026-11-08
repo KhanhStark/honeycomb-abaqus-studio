@@ -147,3 +147,36 @@ def test_body_error_does_not_expose_signed_url():
                     response.raise_for_status()
             assert 'signed-value' not in str(caught.value)
             assert str(caught.value.request.url) == url
+
+@pytest.mark.parametrize('completed',[False,True])
+def test_postprocess_deadline_cannot_consume_another_native_solver_attempt(tmp_path,completed):
+    import sys
+    from types import SimpleNamespace
+    from honeycomb_studio.campaign import campaign_manifest, one_run_spec
+    from honeycomb_studio.models import BatchSpec
+    from honeycomb_studio.store import Store
+    module=load_tool()
+    design=campaign_manifest()['pilot_designs'][0]
+    store=Store(tmp_path)
+    batch=store.create(BatchSpec.model_validate(one_run_spec(design)))
+    run=store.list('runs',batch['id'])[0]
+    directory=Path(run['path'])/'attempts/001'
+    raw=directory/'raw';raw.mkdir(parents=True)
+    duration=run['resolved']['duration']
+    (raw/'hc.odb').write_bytes(b'original native ODB')
+    (raw/'hc.sta').write_text(f' 123 {duration if completed else duration/2:.4E} {duration if completed else duration/2:.4E} 01:00:00 1.0E-08 1 1.0E+00 1.0E+00\n'+('THE ANALYSIS HAS COMPLETED SUCCESSFULLY' if completed else 'THE ANALYSIS HAS NOT BEEN COMPLETED'))
+    run.update(status='interrupted',attempts=[{'path':str(directory),'job_name':'hc'}]);store.save('runs',run);store.db.close()
+    work=dict(ticket='a'*32,source_sha='b'*40,workflow_run_id=123,design=design,status='claimed')
+    updates=[]
+    class Catalog:
+        def get(self,key):return work,None
+        def update(self,key,transform):updates.append(transform(work))
+    worker=SimpleNamespace(ROOT=tmp_path,source_sha=lambda:'b'*40)
+    assert module.retain_completed_output(worker,None,Catalog(),'key',tool_source='c'*40,workflow=123)==completed
+    if completed:
+        assert updates[0]['outcome']=='upload_failed'
+        assert updates[0]['publication_kind']=='postprocess'
+        assert updates[0]['bounded_extraction']
+        assert updates[0]['original_solver_evidence']['solver_success']
+        assert 'quality' not in updates[0]
+    else:assert not updates
