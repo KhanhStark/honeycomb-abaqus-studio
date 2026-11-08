@@ -36,7 +36,14 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@v10.3.0
       - run: uv sync --locked --extra cloud
+      - name: Verify original field acceleration request before native download
+        id: preflight
+        if: inputs.contact_ticket != ''
+        env:
+          CONTACT_TICKET: ${{ inputs.contact_ticket }}
+        run: uv run --locked --extra cloud python scripts/verify_force_sampling.py --ticket "$CONTACT_TICKET" --preflight
       - name: Reclaim disposable hosted runner SDKs
+        if: inputs.contact_ticket == '' || steps.preflight.outputs.native_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -46,11 +53,13 @@ jobs:
           done
           sudo apt-get clean
       - uses: ./.github/actions/abaqus-runtime
+        if: inputs.contact_ticket == '' || steps.preflight.outputs.native_required == 'true'
         with:
           tailscale_id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           audience: ${{ secrets.TS_AUDIENCE }}
           drive_credentials: ${{ secrets.HONEYCOMB_DRIVE_CREDENTIALS_JSON }}
       - name: Release verified installation media
+        if: inputs.contact_ticket == '' || steps.preflight.outputs.native_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -60,7 +69,7 @@ jobs:
           test -f "$media"
           rm -- "$media"
       - name: Audit simultaneous contact force and acceleration without FE
-        if: inputs.contact_ticket != ''
+        if: inputs.contact_ticket != '' && steps.preflight.outputs.native_required == 'true'
         env:
           CONTACT_TICKET: ${{ inputs.contact_ticket }}
         run: uv run --locked --extra cloud python scripts/verify_force_sampling.py --ticket "$CONTACT_TICKET"
