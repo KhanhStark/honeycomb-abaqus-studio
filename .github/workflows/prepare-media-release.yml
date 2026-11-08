@@ -1,0 +1,74 @@
+name: Prepare encrypted installer CDN cache
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: prepare-encrypted-media-release
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.repository == 'xuankhanh24/honeycomb-abaqus-studio' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      ABAQUS_MEDIA_DRIVE_FILE_ID: ${{ vars.ABAQUS_MEDIA_DRIVE_FILE_ID }}
+      HONEYCOMB_DRIVE_CREDENTIALS_JSON: ${{ secrets.HONEYCOMB_DRIVE_CREDENTIALS_JSON }}
+      ABAQUS_MEDIA_RELEASE_KEY: ${{ secrets.ABAQUS_MEDIA_RELEASE_KEY }}
+      ABAQUS_MEDIA_RELEASE_TAG: ${{ vars.ABAQUS_MEDIA_RELEASE_PREPARE_TAG }}
+      HONEYCOMB_ACTIONS_LOG: '1'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+      - run: uv sync --locked --extra cloud
+      - name: Free disposable SDK disk on the hosted preparation runner
+        run: |
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          for directory in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost /opt/hostedtoolcache/CodeQL; do
+            if test -d "$directory" && ! test -L "$directory"; then
+              sudo rm -rf --one-file-system -- "$directory"
+            fi
+          done
+          sudo apt-get update -qq
+          sudo apt-get install -y unrar
+      - name: Retrieve original ISO and require its unchanged pinned SHA-256
+        env:
+          ABAQUS_MEDIA_RELEASE_TAG: ''
+        run: uv run --locked --extra cloud python scripts/prepare_linux_media.py
+      - name: Encrypt media and upload bounded release assets
+        run: |
+          uv run --locked --extra cloud python - <<'PY'
+          import os, sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from media_release import publish_release
+          from honeycomb_studio.media_cache import ISO_NAME
+          publish_release(Path(os.environ['RUNNER_TEMP']) / 'abaqus-media-inspection/iso' / ISO_NAME)
+          PY
+      - name: Measure a fresh runner download and verify original ISO digest
+        run: |
+          uv run --locked --extra cloud python - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          sys.path.insert(0, 'scripts')
+          from media_release import download_release
+          from honeycomb_studio.media_cache import ISO_NAME
+          target = Path(os.environ['RUNNER_TEMP']) / 'abaqus-media-inspection/iso' / ISO_NAME
+          target.unlink()
+          result = download_release(target)
+          Path('output/media-release-probe.json').write_text(json.dumps(result, indent=2))
+          print(json.dumps(result), flush=True)
+          PY
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: verified-encrypted-media-cdn-probe
+          path: output/media-release-probe.json
+          retention-days: 30

@@ -14,6 +14,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--preflight", action="store_true", help="Verify Drive authentication and pinned source before starting runners")
     args = parser.parse_args()
+    if (not args.preflight and os.getenv('ABAQUS_MEDIA_RELEASE_TAG')
+            and os.getenv('ABAQUS_MEDIA_RELEASE_KEY')):
+        from media_release import ReleaseTransferError, download_release
+        target = Path(os.environ['RUNNER_TEMP']) / 'abaqus-media-inspection/iso' / ISO_NAME
+        try:
+            result = download_release(target, logger=get_actions_log())
+        except ReleaseTransferError:
+            logger = get_actions_log()
+            if logger:
+                logger.emit('RETRY', 'GitHub CDN tạm thời không truy cập được; chuyển sang ISO Drive đã ghim')
+        else:
+            write_report(result)
+            return
     file_id = os.getenv("ABAQUS_MEDIA_DRIVE_FILE_ID", "")
     if not file_id:
         if args.preflight:
@@ -43,6 +56,10 @@ def main():
             if logger:
                 logger.emit('RETRY', 'Drive refuses media transport; retrieve the original mirror and require the same pinned ISO SHA-256')
             result = download_pinned_mirror(target)
+    write_report(result)
+
+
+def write_report(result):
     output = Path("output/media-inspection")
     output.mkdir(parents=True, exist_ok=True)
     (output / "inspection.json").write_text(json.dumps({
