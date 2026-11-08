@@ -6,17 +6,22 @@ on:
         description: Compare isolated native stop paths; does not qualify the campaign
         type: boolean
         default: false
+      contact_ticket:
+        description: Read simultaneous native forces from a retained completed ODB
+        type: string
+        default: ''
 permissions:
   contents: read
   id-token: write
 jobs:
   probe:
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 120
     env:
       ABAQUS_MEDIA_DRIVE_FILE_ID: ${{ vars.ABAQUS_MEDIA_DRIVE_FILE_ID }}
       ABAQUS_LICENSE_ENDPOINT: ${{ secrets.ABAQUS_LICENSE_ENDPOINT }}
       ABAQUS_VENDOR_PORT: ${{ secrets.ABAQUS_VENDOR_PORT }}
+      GITHUB_TOKEN: ${{ github.token }}
       HONEYCOMB_INSTALL_CAA: '1'
       HONEYCOMB_ACTIONS_LOG: '1'
     steps:
@@ -25,35 +30,48 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@v10.3.0
       - run: uv sync --locked --extra cloud
-      - name: Kết nối riêng tới máy chủ cấp phép Abaqus
-        uses: tailscale/github-action@v4
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          audience: ${{ secrets.TS_AUDIENCE }}
-          tags: tag:honeycomb-runner
-      - name: Kiểm tra kết nối máy chủ cấp phép trước khi cài đặt
-        run: uv run --locked --extra cloud python scripts/check_license_network.py
-      - name: Cài công cụ và dựng môi trường tương thích Abaqus
+      - name: Reclaim disposable hosted runner SDKs
+        shell: bash
         run: |
-          python3 scripts/actions_step.py --title "Cài công cụ giải nén" --details output/actions-logs/packages.log -- bash -c 'sudo apt-get update -qq && sudo apt-get install -y unrar p7zip-full'
-          python3 scripts/actions_step.py --title "Dựng môi trường Linux" --details output/actions-logs/image.log -- docker build --build-arg MODEL_UID=$(id -u) -t honeycomb-install-probe scripts/linux_media
-      - name: Tải bộ cài từ Drive riêng · dung lượng, tốc độ, tiến độ
+          set -euo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          for directory in /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost /usr/local/share/powershell /usr/local/share/chromium /opt/az /usr/lib/jvm /opt/hostedtoolcache/CodeQL; do
+            if test -d "$directory" && ! test -L "$directory"; then sudo rm -rf --one-file-system -- "$directory"; fi
+          done
+          sudo apt-get clean
+      - uses: ./.github/actions/abaqus-runtime
+        with:
+          tailscale_id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          drive_credentials: ${{ secrets.HONEYCOMB_DRIVE_CREDENTIALS_JSON }}
+      - name: Release verified installation media
+        shell: bash
+        run: |
+          set -euo pipefail
+          mountpoint="$RUNNER_TEMP/abaqus-mount"
+          media="$RUNNER_TEMP/abaqus-media-inspection/iso/DS.SIMULIA.Suite.2020.Linux64_Softgozar.com.iso"
+          if mountpoint -q "$mountpoint"; then sudo umount "$mountpoint"; fi
+          test -f "$media"
+          rm -- "$media"
+      - name: Audit simultaneous contact force and acceleration without FE
+        if: inputs.contact_ticket != ''
         env:
-          HONEYCOMB_DRIVE_CREDENTIALS_JSON: ${{ secrets.HONEYCOMB_DRIVE_CREDENTIALS_JSON }}
-        run: uv run --locked python scripts/actions_step.py --title "Tải ISO từ kho Drive" --details output/actions-logs/download.log -- uv run --locked python scripts/prepare_linux_media.py
-      - name: Kiểm tra SHA-256 và cài Abaqus trong môi trường cách ly
-        run: python3 scripts/actions_step.py --title "Kiểm tra và cài Abaqus" --details output/actions-logs/install.log -- bash scripts/linux_media/install_runtime.sh
+          CONTACT_TICKET: ${{ inputs.contact_ticket }}
+        run: uv run --locked --extra cloud python scripts/verify_force_sampling.py --ticket "$CONTACT_TICKET"
       - name: Prove checkpoint integrity and native recover before research retry
-        if: ${{ !inputs.diagnostic }}
+        if: ${{ !inputs.diagnostic && inputs.contact_ticket == '' }}
         run: uv run --locked --extra cloud python scripts/verify_explicit_recover.py
       - name: Compare native stop paths in the same Abaqus installation
-        if: ${{ inputs.diagnostic }}
+        if: ${{ inputs.diagnostic && inputs.contact_ticket == '' }}
         run: uv run --locked --extra cloud python scripts/diagnose_explicit_stop.py
       - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: explicit-recover-verification
           path: |
+            output/force-sampling-probe.json
+            /tmp/honeycomb-force-probe/*.json
+            /tmp/honeycomb-force-probe/*.log
             output/explicit-recover-verification.json
             /tmp/honeycomb-recover-probe/*.log
             /tmp/honeycomb-recover-probe/*.sta
