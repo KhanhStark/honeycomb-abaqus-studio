@@ -1,5 +1,7 @@
 """Fetch exact predecessor bytes through GitHub's asset API; run the frozen worker."""
 import hashlib
+import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -11,6 +13,15 @@ from urllib.parse import quote, unquote, urlparse
 import httpx
 
 from honeycomb_studio.cloud_restore import public_asset, restore, validate_manifest
+
+
+def history_verifier():
+    """Load only receipt validation from the independently pinned tool checkout."""
+    path = Path(__file__).resolve().parents[1] / 'src/honeycomb_studio/cloud_continuation.py'
+    spec = importlib.util.spec_from_file_location('honeycomb_studio._checkpoint_receipt_repair', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 class ReleaseAssetTransport:
@@ -110,6 +121,17 @@ def main():
                  'mode': 'github-release-asset-api', 'utc_epoch': time.time()}}
 
     catalog.update(key, record)
+    verifier = history_verifier()
+
+    def verify_history(raw, job_name, executable, spec):
+        marker = worker.ROOT / 'continuation.json'
+        predecessor = json.loads(marker.read_text()).get('orderly_checkpoint') if marker.exists() else None
+        result = verifier.verify_checkpoint_history(raw, job_name, executable, spec, predecessor=predecessor)
+        result['receipt_verifier'] = {'source_sha': tool_source,
+            'sha256': hashlib.sha256(Path(verifier.__file__).read_bytes()).hexdigest()}
+        return result
+
+    worker.verify_checkpoint_history = verify_history
     with httpx.Client(timeout=120, follow_redirects=True) as body_client:
         transport = ReleaseAssetTransport(github, body_client)
         worker.restore = lambda manifest, root, **kwargs: restore_checkpoint(

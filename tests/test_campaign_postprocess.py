@@ -426,3 +426,58 @@ def test_finished_extraction_failure_is_not_automatically_recomputed(monkeypatch
     assert design.get('attempt', 0) == 0
     assert updates[-1]['publication_kind'] == 'postprocess'
     assert updates[-1]['postprocess_source_sha'] == 'recovery-tools'
+
+def test_retained_checkpoint_recovery_seals_original_state_without_fe(tmp_path, monkeypatch):
+    import json
+    from contextlib import contextmanager
+    from honeycomb_studio.models import digest
+    from honeycomb_studio.campaign_queue import receipt_hash
+    from test_checkpoint_recovered_time import recovered
+
+    module = tool()
+    store, design, run, _ = fixture(tmp_path)
+    raw = Path(run['attempts'][0]['path']) / 'raw'
+    logs = raw.parent / 'logs'
+    logs.mkdir()
+    (logs / 'solving.log').write_text('Orderly VEXTERNALDB stop\n')
+    ack, history_pred, _ = recovered(raw)
+    (raw / 'continuation-stop-ack.json').write_text(json.dumps(ack))
+    for ext in ('abq', 'pac', 'res', 'sel'):
+        (raw / ('hc.' + ext)).write_bytes(b'original recovery state')
+    source, processor = 'a' * 40, 'b' * 40
+    predecessor = dict(ticket='c' * 32, source_sha=source, physics_hash=design['physics_hash'],
+        run_id=run['id'], job_name='hc', segment=0, orderly_checkpoint=history_pred)
+    predecessor['receipt_hash'] = receipt_hash(predecessor)
+    work = dict(ticket='d' * 32, source_sha=source, runtime_hash=digest({}), design=design,
+        segment=1, predecessor=predecessor, workflow_run_id=123,
+        checkpoint_history_recovery={'artifact_id':456, 'artifact_digest':'sha256:original'})
+    (tmp_path / 'artifact-retrieval.json').write_text(json.dumps(dict(id=456, digest='sha256:original', source_workflow_run_id=123)))
+    store.db.close()
+    published, active = [], []
+    @contextmanager
+    def runtime(*args, **kwargs):
+        active.append(True)
+        try: yield 'abaqus-fixture'
+        finally: active.pop()
+    def read_history(args, **kwargs):
+        assert active and args[1] == 'python', 'Only ODB reads are admitted'
+        Path(args[-1]).write_text(json.dumps([dict(step='Impact',region='Assembly',variable='ALLKE',
+            data=[[i*2e-6,1.] for i in range(3423)])]))
+    monkeypatch.setattr(module, 'ROOT', tmp_path)
+    monkeypatch.setattr(module, 'source_sha', lambda: source)
+    monkeypatch.setattr(module, 'require_qualification', lambda _: {})
+    monkeypatch.setattr(module, 'native_runtime', runtime)
+    monkeypatch.setattr(module.subprocess, 'check_output', lambda *args, **kwargs: processor)
+    monkeypatch.setattr(module.subprocess, 'run', read_history)
+    monkeypatch.setattr(module, 'publish_execution', lambda w,r,*args: published.append(r))
+    monkeypatch.setenv('PROCESSOR_SOURCE_SHA', processor)
+    monkeypatch.setenv('GITHUB_RUN_ID', '789')
+    before = (raw / 'hc.odb').read_bytes()
+    module.recover_checkpoint_receipt(work, None, None, 'key')
+    sealed = json.loads((tmp_path / 'continuation.json').read_text())
+    assert sealed['orderly_checkpoint']['history_integrity']['passed']
+    assert sealed['orderly_checkpoint']['stop']['simulation_time_s'] == .00684421
+    assert sealed['stop_acknowledgement'] == ack
+    assert sealed['checkpoint_history_recovery']['new_fe_processes'] == 0
+    assert published[0]['outcome'] == 'checkpoint'
+    assert (raw / 'hc.odb').read_bytes() == before and not active

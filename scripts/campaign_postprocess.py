@@ -165,6 +165,8 @@ def completed_recovery_receipt(root, work, workflow):
 
 
 def execute(work, github, catalog, key):
+    if work.get('checkpoint_history_recovery'):
+        return recover_checkpoint_receipt(work, github, catalog, key)
     original_source = source_sha()
     if work['source_sha'] != original_source or digest(require_qualification(Path.cwd())) != work['runtime_hash']:
         raise ValueError('Original source or pinned runtime differs')
@@ -239,6 +241,74 @@ def execute(work, github, catalog, key):
     if bounded:
         result['bounded_extraction'] = attempt['bounded_extraction']
     store.db.close()
+    write_json(ROOT / 'campaign-execution.json', result)
+    publish_execution(work, result, github, catalog, key)
+
+
+def recover_checkpoint_receipt(work, github, catalog, key):
+    """Seal retained native state after re-reading its original ODB; no FE process."""
+    from honeycomb_studio.campaign_queue import receipt_hash
+    from honeycomb_studio.cloud_continuation import checkpoint_inventory, verify_solver_cleanup
+
+    recovery = work['checkpoint_history_recovery']
+    processor = subprocess.check_output(['git', '-C', str(Path(__file__).resolve().parents[1]),
+                                        'rev-parse', 'HEAD'], text=True).strip()
+    if (processor != os.environ['PROCESSOR_SOURCE_SHA'] or source_sha() != work['source_sha']
+            or digest(require_qualification(Path.cwd())) != work['runtime_hash']):
+        raise ValueError('Checkpoint receipt recovery source/runtime differs')
+    proof = json.loads((ROOT / 'artifact-retrieval.json').read_text())
+    if (proof['id'] != recovery['artifact_id'] or proof['digest'] != recovery['artifact_digest']
+            or proof['source_workflow_run_id'] != work['workflow_run_id']):
+        raise ValueError('Checkpoint artifact identity differs')
+    spec = BatchSpec.model_validate(one_run_spec(work['design']))
+    expected = expand(spec)[0]
+    store = Store(ROOT)
+    rows = store.list('runs')
+    if len(rows) != 1:
+        raise ValueError('Checkpoint artifact must contain one original run')
+    run = rows[0]
+    if (not run.get('attempts') or run['status'] != 'interrupted'
+            or run['input_hash'] != expected['input_hash'] or run['resolved'] != expected['resolved']
+            or digest(run['resolved']) != work['design']['physics_hash']):
+        raise ValueError('Retained checkpoint scientific identity differs')
+    attempt = run['attempts'][-1]
+    directory = Path(attempt['path']).resolve()
+    directory.relative_to(ROOT.resolve())
+    raw = directory / 'raw'
+    job = attempt['job_name']
+    if not job or Path(job).name != job:
+        raise ValueError('Invalid retained native job')
+    verify_solver_cleanup(directory / 'logs/solving.log')
+    predecessor = work.get('predecessor')
+    if (not predecessor or predecessor.get('receipt_hash') != receipt_hash(predecessor)
+            or predecessor['source_sha'] != work['source_sha']
+            or predecessor['physics_hash'] != work['design']['physics_hash']
+            or predecessor['run_id'] != run['id'] or predecessor['job_name'] != job
+            or predecessor['segment'] + 1 != work['segment']):
+        raise ValueError('Original predecessor receipt checksum differs')
+    module_path = Path(__file__).resolve().parents[1] / 'src/honeycomb_studio/cloud_continuation.py'
+    module_spec = importlib.util.spec_from_file_location('honeycomb_studio._checkpoint_recovery_verifier', module_path)
+    verifier = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(verifier)
+    inventory = checkpoint_inventory(raw, job)
+    with native_runtime(ROOT, continuation=True) as executable:
+        history = verifier.verify_checkpoint_history(raw, job, str(executable), run['resolved'],
+                                                     predecessor=predecessor['orderly_checkpoint'])
+    if checkpoint_inventory(raw, job) != inventory:
+        raise ValueError('Original native state changed during checkpoint inspection')
+    history['receipt_verifier'] = {'source_sha': processor, 'sha256': checksum(Path(verifier.__file__))}
+    receipt = {'ticket': work['ticket'], 'segment': work['segment'], 'source_sha': work['source_sha'],
+        'physics_hash': work['design']['physics_hash'], 'batch_id': run['batch_id'], 'run_id': run['id'],
+        'job_name': job, 'input_hash': run['input_hash'], 'runtime_hash': work['runtime_hash'], 'cpus': 4,
+        'files': inventory, 'orderly_checkpoint': history,
+        'stop_acknowledgement': json.loads((raw / 'continuation-stop-ack.json').read_text()),
+        'checkpoint_history_recovery': {**recovery, 'processor_source_sha': processor,
+            'workflow_run_id': int(os.environ['GITHUB_RUN_ID']), 'new_fe_processes': 0,
+            'artifact_retrieval': proof}}
+    write_json(ROOT / 'continuation.json', receipt)
+    store.db.close()
+    result = {**work, 'outcome': 'checkpoint', 'error': None, 'finished_at': time.time(),
+              'new_fe_processes': 0, 'checkpoint_recovery_workflow_run_id': int(os.environ['GITHUB_RUN_ID'])}
     write_json(ROOT / 'campaign-execution.json', result)
     publish_execution(work, result, github, catalog, key)
 
