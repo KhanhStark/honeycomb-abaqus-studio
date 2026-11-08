@@ -27,7 +27,21 @@ def initial_designs(manifest):
 def fixed_collection_authorized(manifest):
     """The human's new6.5m/s contract belongs to a separate immutable campaign."""
     contract = manifest.get('fixed_collection_contract', {})
-    rows = initial_designs(manifest)
+    all_rows = initial_designs(manifest)
+    rows = [r for r in all_rows if not r.get('supplemental_batch_id')]
+    extras = [r for r in all_rows if r.get('supplemental_batch_id')]
+    extension = manifest.get('supplemental_collection_contract')
+    extension_valid = not extras and extension is None
+    if extension:
+        extension_valid = (
+            extension.get('human_authorized') is True
+            and extension.get('batch_id') == 'supplemental-100-20261109'
+            and extension.get('count') == len(extras) == 100
+            and extension.get('parent_initial_designs_hash') == contract.get('initial_designs_hash')
+            and extension.get('designs_hash') == digest({r['id']: r['physics_hash'] for r in extras})
+            and extension.get('models_hash') == digest({r['id']: r['model'] for r in extras})
+            and all(r['role'] == 'development' and r['supplemental_batch_id'] == extension['batch_id']
+                    for r in extras))
     return (manifest.get('id', '').endswith('-v6p5')
             and contract.get('human_authorized') is True
             and contract.get('velocity_m_s') == 6.5 and contract.get('duration_s') == .008
@@ -35,6 +49,9 @@ def fixed_collection_authorized(manifest):
             and manifest.get('provisional_collection', {}).get('enabled') is True
             and manifest.get('mesh_policy', {}).get('mode') == 'reuse_actions_reference'
             and len(rows) == len({r['id'] for r in rows}) == 400
+            and extension_valid
+            and len(all_rows) == len({r['id'] for r in all_rows})
+            and len(all_rows) == len({r['physics_hash'] for r in all_rows})
             and contract.get('initial_designs_hash') == digest({r['id']: r['physics_hash'] for r in rows}))
 
 
@@ -196,7 +213,9 @@ def advance(original):
                                 and not r.get('reused_from') for r in rows):
             manifest.update(phase='collection_completed', enabled=False,
                             collection_report={'completed_verified': len(rows),
-                                               'initial_designs_hash': digest({r['id']: r['physics_hash'] for r in rows}),
+                                               'initial_designs_hash': (manifest['fixed_collection_contract']['initial_designs_hash']
+                                                   if phase == 'fixed_collection' else digest({r['id']: r['physics_hash'] for r in rows})),
+                                               'collected_designs_hash': digest({r['id']: r['physics_hash'] for r in rows}),
                                                'global_qualification_passed': False,
                                                'scientific_block': deepcopy(manifest.get('scientific_block')),
                                                'scientific_acceptance': 'not_established'})

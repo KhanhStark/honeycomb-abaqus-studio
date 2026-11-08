@@ -1,0 +1,35 @@
+name: Core damage · prepare 100 supplemental configurations
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact sampling/controller tool revision
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: core-damage-supplement-preparation
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.repository == 'xuankhanh24/honeycomb-abaqus-studio' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+      - run: uv sync --locked --extra cloud
+      - name: Select valid distinct points and verify all 500 Linux identities
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: uv run --locked --extra cloud python scripts/campaign_prepare_supplement.py
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: supplemental-100-plan
+          retention-days: 30
+          path: output/supplemental-100-plan.json
+          if-no-files-found: error
