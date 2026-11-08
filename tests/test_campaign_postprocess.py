@@ -122,6 +122,20 @@ def test_postprocess_engine_refuses_any_new_fe_process(tmp_path):
             engine._monitor({}, {}, phase, ['forbidden'])
 
 
+def test_bounded_recovery_changes_only_the_extractor_command(tmp_path, monkeypatch):
+    module = tool()
+    store, _, _, _ = fixture(tmp_path)
+    engine = module.PostprocessOnlyEngine(store, abaqus='never-launch-fe', fake=False)
+    engine.bounded_extractor = tmp_path / 'bounded-extraction-tools/extract_bounded.py'
+    commands = []
+    monkeypatch.setattr(module.Engine, '_monitor', lambda self, r, a, phase, args, spool:
+                        commands.append((phase, args, spool)))
+    engine._monitor({}, {}, 'extracting', ['python', 'original-extract.py', 'original-config.json'], tmp_path)
+    assert commands == [('extracting', ['python', str(engine.bounded_extractor), 'original-config.json'], tmp_path)]
+    with pytest.raises(ValueError, match='FE process'):
+        engine._monitor({}, {}, 'solving', ['forbidden'])
+
+
 def test_recovery_uses_the_original_attempt_and_odb(tmp_path, monkeypatch):
     module = tool()
     store, design, _, _ = fixture(tmp_path)

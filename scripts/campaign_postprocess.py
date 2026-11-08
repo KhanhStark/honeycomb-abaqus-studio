@@ -103,6 +103,8 @@ class PostprocessOnlyEngine(Engine):
     def _monitor(self, r, a, phase, args, spool=None):
         if phase in ('building', 'checking', 'solving'):
             raise ValueError('A postprocess recovery must never start an FE process')
+        if phase == 'extracting' and args and getattr(self, 'bounded_extractor', None):
+            args = [args[0], str(self.bounded_extractor), *args[2:]]
         return super()._monitor(r, a, phase, args, spool)
 
 
@@ -176,6 +178,19 @@ def execute(work, github, catalog, key):
     odb = Path(attempt['path']) / 'raw' / (attempt['job_name'] + '.odb')
     original_digest = checksum(odb)
     original_attempts = len(run['attempts'])
+    bounded = work.get('bounded_extraction') is True
+    if bounded:
+        tool_directory = ROOT / 'bounded-extraction-tools'
+        tool_directory.mkdir(exist_ok=True)
+        adapters = Path(__file__).resolve().parents[1] / 'src/honeycomb_studio/adapters'
+        tool_hashes = {}
+        for name in ('extract.py', 'extract_bounded.py', 'damage_metrics.py'):
+            target = tool_directory / name
+            shutil.copyfile(adapters / name, target)
+            tool_hashes[name] = checksum(target)
+        attempt['bounded_extraction'] = {'source_sha': processor, 'frame_group_size': 100,
+                                         'tools_sha256': tool_hashes, 'new_fe_processes': 0}
+        store.save('runs', run)
     done = threading.Event()
     deadline = time.monotonic() + max(0, 300 * 60 -
         (time.time() - float(os.environ['HONEYCOMB_WORKFLOW_STARTED_EPOCH'])))
@@ -204,13 +219,16 @@ def execute(work, github, catalog, key):
     try:
         with native_runtime(ROOT, continuation=True) as executable:
             engine = PostprocessOnlyEngine(store, abaqus=str(executable), fake=False)
+            if bounded:
+                engine.bounded_extractor = tool_directory / 'extract_bounded.py'
             engine.execute_wave([run], batch)
     finally:
         done.set()
         reporter.join(timeout=2)
     run = store.get('runs', run['id'])
     if run['status'] not in ('completed', 'review') or len(run['attempts']) != original_attempts:
-        raise RuntimeError('Original ODB postprocessing did not complete; retained bytes must be inspected')
+        raise RuntimeError('Original ODB postprocessing did not complete; phase=' + str(run.get('failed_phase', run.get('phase')))
+                           + '; error=' + str(run.get('error')))
     if checksum(odb) != original_digest:
         raise ValueError('Original ODB bytes changed during recovery')
     result = {**work, 'outcome': 'completed', 'error': None, 'status': 'finished',
@@ -218,6 +236,8 @@ def execute(work, github, catalog, key):
               'postprocess_source_sha': processor, 'postprocess_workflow_run_id': int(os.environ['GITHUB_RUN_ID']),
               'original_odb_sha256': original_digest, 'original_solver_evidence': sta,
               'new_fe_processes': 0, 'finished_at': time.time()}
+    if bounded:
+        result['bounded_extraction'] = attempt['bounded_extraction']
     store.db.close()
     write_json(ROOT / 'campaign-execution.json', result)
     publish_execution(work, result, github, catalog, key)

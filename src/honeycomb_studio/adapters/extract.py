@@ -115,11 +115,16 @@ def run(config):
         os.makedirs(spool)
     odb = openOdb(path=str(config["odb"]), readOnly=True)
     try:
+        metadata_directory = config.get('metadata_directory', out)
         damage_metrics = None
         if config.get('damage_metrics'):
             from damage_metrics import RearMetrics
             damage_metrics = RearMetrics(odb)
-        sequence = 0
+            state_path = config.get('damage_state_path')
+            if state_path and os.path.isfile(state_path):
+                with open(state_path) as state_file:
+                    damage_metrics.restore_state(json.load(state_file))
+        sequence = int(config.get('sequence_start', 0))
         instances = list(odb.rootAssembly.instances.keys())
         instance_lookup = dict((name, i) for i, name in enumerate(instances))
         inventory = {
@@ -218,7 +223,10 @@ def run(config):
                             "data": list(series.data),
                         }
                     )
-            for frame_index, frame in enumerate(step.frames):
+            start = int(config.get('frame_start', 0))
+            stop = min(int(config.get('frame_stop', len(step.frames))), len(step.frames))
+            for frame_index in range(start, stop):
+                frame = step.frames[frame_index]
                 if damage_metrics is not None:
                     damage_metrics.frame(frame, step.totalTime + frame.frameValue)
                 if config.get("frame_indices") is not None and frame_index not in config["frame_indices"]:
@@ -327,10 +335,12 @@ def run(config):
         if damage_metrics is not None:
             dump(os.path.join(out, 'damage-summary.json'), damage_metrics.summary())
             dump(os.path.join(out, 'rear-field-history.json'), damage_metrics.rows)
-        dump(os.path.join(out, "histories.json"), histories)
+            if config.get('damage_state_path'):
+                dump(config['damage_state_path'], damage_metrics.state())
+        dump(os.path.join(metadata_directory, "histories.json"), histories)
         inventory["chunks"] = sequence
-        dump(os.path.join(out, "inventory.json"), inventory)
-        dump(os.path.join(out, "complete.json"), {"complete": True, "chunks": sequence})
+        dump(os.path.join(metadata_directory, "inventory.json"), inventory)
+        dump(os.path.join(metadata_directory, "complete.json"), {"complete": True, "chunks": sequence})
     finally:
         odb.close()
 

@@ -27,6 +27,22 @@ class RearMetrics(object):
         self.max_corrected = 0.
         self.deletion_counts = {}
 
+    def state(self):
+        """Portable accumulated metrics between independent read-only ODB readers."""
+        return {'complete': self.complete, 'initial': self.initial, 'rows': self.rows,
+                'deleted': sorted(self.deleted), 'connected': sorted(self.connected),
+                'max_raw': self.max_raw, 'max_corrected': self.max_corrected,
+                'deletion_counts': self.deletion_counts}
+
+    def restore_state(self, state):
+        self.complete = state['complete']
+        self.initial = dict((int(k), v) for k, v in state['initial'].items())
+        self.rows = state['rows']
+        self.deleted = set(state['deleted'])
+        self.connected = set(state['connected'])
+        self.max_raw, self.max_corrected = state['max_raw'], state['max_corrected']
+        self.deletion_counts = state['deletion_counts']
+
     def frame(self, frame, total_time):
         outputs = frame.fieldOutputs
         names = outputs.keys()
