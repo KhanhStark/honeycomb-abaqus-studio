@@ -18,6 +18,10 @@ inputs:
     required: false
     default: ''
     description: AES-256 key for encrypted CDN cache, kept in repository secrets
+  media_release_tag:
+    required: false
+    default: ''
+    description: Pinned encrypted release tag supplied by the calling workflow
 runs:
   using: composite
   steps:
@@ -36,7 +40,7 @@ runs:
       env:
         HONEYCOMB_DRIVE_CREDENTIALS_JSON: ${{ inputs.drive_credentials }}
         HONEYCOMB_MEDIA_TRANSPORT_SCRIPT: ${{ inputs.transport_script }}
-        ABAQUS_MEDIA_RELEASE_TAG: ${{ vars.ABAQUS_MEDIA_RELEASE_TAG }}
+        ABAQUS_MEDIA_RELEASE_TAG: ${{ inputs.media_release_tag }}
         ABAQUS_MEDIA_RELEASE_KEY: ${{ inputs.media_release_key }}
       run: uv run --locked python scripts/actions_step.py --title "Tải bộ cài đã khóa SHA-256" --details output/actions-logs/download.log -- uv run --locked python "$HONEYCOMB_MEDIA_TRANSPORT_SCRIPT"
     - shell: bash

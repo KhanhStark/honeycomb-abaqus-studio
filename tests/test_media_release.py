@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -10,6 +11,20 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 sys.path.insert(0, str(Path(__file__).parents[1] / 'scripts'))
 import media_release as media
+
+
+def test_runtime_action_receives_repository_settings_through_declared_inputs():
+    root = Path(__file__).parents[1]
+    action = (root / '.github/actions/abaqus-runtime/action.yml').read_text(encoding='utf8')
+    # The runner's action manifest expression context excludes vars/secrets.
+    assert not re.search(r'\$\{\{\s*(?:vars|secrets)\.', action)
+    inputs = action.split('inputs:\n', 1)[1].split('\nruns:', 1)[0]
+    declared = set(re.findall(r'^  ([a-z_]+):$', inputs, re.M))
+    assert {'media_release_key', 'media_release_tag'} <= declared
+    assert 'ABAQUS_MEDIA_RELEASE_TAG: ${{ inputs.media_release_tag }}' in action
+    for name in ('core-damage-worker.yml', 'core-damage-postprocess.yml'):
+        workflow = (root / '.github/workflows' / name).read_text(encoding='utf8')
+        assert 'media_release_tag: ${{ vars.ABAQUS_MEDIA_RELEASE_TAG }}' in workflow
 
 
 def encrypted_fixture():
