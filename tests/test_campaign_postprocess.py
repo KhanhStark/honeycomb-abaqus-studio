@@ -192,6 +192,57 @@ def test_postprocess_claim_rejects_a_duplicate_or_other_source():
         module.claim_recovery(work, 456, 123, 'different')
 
 
+def test_explicit_publication_hold_keeps_retained_odb_pending_without_redispatch(monkeypatch):
+    tool()
+    import campaign_controller as controller
+    from types import SimpleNamespace
+    work = {'publication_kind': 'postprocess', 'publication_attempt': 3,
+            'workflow_run_id': 123, 'publication_workflow_run_id': 456}
+    class Catalog:
+        def __init__(self, github):
+            pass
+        def get(self, key):
+            return work, None
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Held ODB must not be redispatched before the extraction repair')
+    monkeypatch.setattr(controller, 'Catalog', Catalog)
+    app = SimpleNamespace(repository=lambda repo: SimpleNamespace(repo=forbidden))
+    row = {'repository': 'owner/repo', 'publication_ticket': 'a' * 32,
+           'status': 'publication_pending',
+           'publication_recovery_hold': {'reason': 'Inspect retained extraction failure'}}
+    controller.reconcile_publication({'id': 'core-damage-v2-20261107'}, row, app)
+    assert row['status'] == 'publication_pending'
+    assert 'Inspect retained extraction failure' in row['error']
+
+
+@pytest.mark.parametrize('retained', [True, False])
+def test_exhausted_exporter_is_isolated_only_with_retained_completed_solver(monkeypatch, retained):
+    tool()
+    import campaign_controller as controller
+    from types import SimpleNamespace
+    work = dict(publication_kind='postprocess', publication_attempt=3, workflow_run_id=123,
+                publication_workflow_run_id=456, fallback_artifact_id=789,
+                original_solver_evidence={'solver_success': True, 'solver_error': False,
+                                          'simulation_time_s': .008})
+    class Catalog:
+        def __init__(self, github):
+            pass
+        def get(self, key):
+            return work, None
+    class Github:
+        def repo(self, method, path):
+            if '/artifacts/' in path:
+                return {'id': 789, 'name': 'retained', 'expired': not retained}
+            return {'status': 'completed'}
+    monkeypatch.setattr(controller, 'Catalog', Catalog)
+    row = dict(repository='owner/repo', publication_ticket='a' * 32, status='publication_pending',
+               recoverable_artifact='retained', model={'duration': .008})
+    controller.reconcile_publication({'id': 'core-damage-v2-20261107'}, row,
+                                     SimpleNamespace(repository=lambda repo: Github()))
+    assert row['status'] == ('publication_pending' if retained else 'needs_investigation')
+    assert bool(row.get('publication_recovery_hold')) is retained
+
+
 def test_failed_artifact_download_cannot_replace_the_immutable_original(tmp_path, monkeypatch):
     module = tool()
     work = dict(publication_workflow_run_id=456, workflow_run_id=123, source_sha='original',

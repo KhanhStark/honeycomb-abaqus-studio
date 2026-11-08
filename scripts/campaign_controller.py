@@ -214,6 +214,12 @@ def reconcile_publication(manifest, row, app, *, admit_dispatch=None):
     if not work:
         row.update(status='needs_investigation', error='Publication ticket is missing')
         return
+    if row.get('publication_recovery_hold'):
+        # Retain the original solver output while an operator repairs its
+        # exporter. Other fixed configurations can still collect data; this
+        # row cannot pass collection acceptance or admit another FE execution.
+        row['error'] = 'Publication recovery held: ' + row['publication_recovery_hold']['reason']
+        return
     original = github.repo('GET', '/actions/runs/' + str(work['workflow_run_id']))
     if original['status'] != 'completed':
         return  # The original runner is still retaining its computed bytes.
@@ -223,6 +229,19 @@ def reconcile_publication(manifest, row, app, *, admit_dispatch=None):
         if run['status'] != 'completed':
             return
         if work.get('publication_attempt', 0) >= 3:
+            evidence = work.get('original_solver_evidence') or {}
+            if (work.get('publication_kind') == 'postprocess'
+                    and evidence.get('solver_success') is True and evidence.get('solver_error') is False
+                    and abs(evidence.get('simulation_time_s', -1) - row['model']['duration']) < 1e-9
+                    and work.get('fallback_artifact_id')):
+                artifact = github.repo('GET', '/actions/artifacts/' + str(work['fallback_artifact_id']))
+                if not artifact['expired'] and artifact['name'] == row['recoverable_artifact']:
+                    reason = 'Exporter exhausted retries; inspect retained completed ODB before another recovery'
+                    row.update(publication_recovery_hold={'reason': reason,
+                        'artifact_id': artifact['id'], 'failed_run_id': publication_run,
+                        'solver_success': True, 'new_fe_processes': 0},
+                        error='Publication recovery held: ' + reason)
+                    return
             row.update(status='needs_investigation', error='Three publication recovery attempts failed; solver output remains retained')
             return
     elif work.get('publication_status') == 'ready':
