@@ -10,11 +10,16 @@ on:
         description: Read simultaneous native forces from a retained completed ODB
         type: string
         default: ''
+      source_sha:
+        description: Pinned diagnostic code checkout on the authorized main workflow
+        type: string
+        default: ''
 permissions:
   contents: read
   id-token: write
 jobs:
   probe:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     env:
@@ -27,6 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
       - uses: astral-sh/setup-uv@v10.3.0
       - run: uv sync --locked --extra cloud
