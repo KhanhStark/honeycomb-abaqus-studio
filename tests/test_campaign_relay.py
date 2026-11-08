@@ -9,6 +9,22 @@ sys.path.insert(0, str(Path(__file__).parents[1] / 'scripts'))
 import campaign_controller as controller
 
 
+@pytest.mark.parametrize('old_status', ['in_progress', 'queued', 'pending'])
+def test_relay_does_not_stop_for_an_older_controller_with_delayed_status(old_status):
+    dispatched = []
+
+    def request(method, path, body=None):
+        if method == 'GET':
+            return {'workflow_runs': [{'id': 10, 'status': old_status},
+                                      {'id': 11, 'status': 'in_progress'}]}
+        dispatched.append(body)
+
+    store = SimpleNamespace(catalog=SimpleNamespace(get=lambda _: ({'enabled': True, 'phase': 'fixed_collection'}, None)))
+    app = SimpleNamespace(repository=lambda _: SimpleNamespace(repo=request))
+    assert controller.relay(store, app, 'core-damage-v2-20261107', '11')['controller_redispatched']
+    assert dispatched == [{'ref': 'main'}]
+
+
 @pytest.mark.parametrize('accepted', [False, True])
 def test_relay_reconciles_uncertain_timeout_before_retrying_dispatch(monkeypatch, accepted):
     monkeypatch.setattr(controller.time, 'sleep', lambda seconds: None)

@@ -437,7 +437,10 @@ def relay(store, app, identity, workflow_run_id):
         # A timed-out POST can still have reached GitHub. Reconcile before
         # retrying, while workflow concurrency serializes any delayed duplicate.
         runs = github.repo('GET', '/actions/workflows/core-damage-controller.yml/runs?per_page=100')['workflow_runs']
-        if any(r['status'] != 'completed' and str(r['id']) != str(workflow_run_id) for r in runs):
+        # This run already owns the workflow concurrency group. An older
+        # controller can still appear active while GitHub finalizes its status;
+        # it is not a successor and must not break the relay chain.
+        if any(r['status'] != 'completed' and int(r['id']) > int(workflow_run_id) for r in runs):
             return {'controller_redispatched': False, 'reason': 'Another controller is already queued'}
         try:
             github.repo('POST', '/actions/workflows/core-damage-controller.yml/dispatches', {'ref': 'main'})
