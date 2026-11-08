@@ -278,12 +278,19 @@ def status_report(manifest):
     report.update(phase=manifest['phase'], enabled=manifest['enabled'], errors=[], owners={})
     report.update(protocol_error=manifest.get('error'), scientific_block=manifest.get('scientific_block'),
                   collection_report=manifest.get('collection_report'))
-    initial = [r for r in manifest['designs'] if r['role'] in ('development', 'test')]
+    collection = [r for r in manifest['designs'] if r['role'] in ('development', 'test')]
+    initial = [r for r in collection if not r.get('supplemental_batch_id')]
+    supplemental = [r for r in collection if r.get('supplemental_batch_id')]
     report.update(initial_400_dispatched=sum(r['status'] != 'pending' for r in initial),
                   initial_400_completed=sum(r['status'] == 'completed' and r.get('archive_verified', False)
                                             and r.get('quality', {}).get('passed', False) for r in initial),
                   global_qualification_passed=globally_qualified(manifest),
                   provisional_collection=manifest.get('provisional_collection', {}).get('enabled', False))
+    report.update(collection_configurations=len(collection),
+                  supplemental_configurations=len(supplemental),
+                  supplemental_dispatched=sum(r['status'] != 'pending' for r in supplemental),
+                  supplemental_completed=sum(r['status'] == 'completed' and r.get('archive_verified', False)
+                                             and r.get('quality', {}).get('passed', False) for r in supplemental))
     samples = [r for r in manifest['designs'] if r['role'] in ('development', 'adaptive', 'test', 'confirmation')]
     done = [r for r in samples if r['status'] == 'completed' and r.get('archive_verified')]
     for owner in OWNERS:

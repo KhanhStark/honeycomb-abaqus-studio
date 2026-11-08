@@ -85,3 +85,16 @@ def test_completed400_does_not_finish_while_supplement_is_pending(proposal):
     assert result['phase'] == 'collection_completed'
     assert result['collection_report']['completed_verified'] == 500
     assert result['collection_report']['initial_designs_hash'] == manifest['fixed_collection_contract']['initial_designs_hash']
+
+
+def test_status_keeps_original400_and_supplemental100_counts_separate(proposal):
+    from campaign_controller import status_report
+    from test_campaign_provisional_failure import complete
+
+    manifest = extended(proposal)
+    for row in manifest['designs']:
+        complete(row)
+    report = status_report(manifest)
+    assert report['initial_400_dispatched'] == report['initial_400_completed'] == 400
+    assert report['supplemental_configurations'] == report['supplemental_dispatched'] == report['supplemental_completed'] == 100
+    assert report['collection_configurations'] == 500
