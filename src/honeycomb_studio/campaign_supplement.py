@@ -20,12 +20,12 @@ COUNT = 100
 
 def select_points(manifest, *, pool_power=16, evaluation_power=16):
     """Greedy farthest points in normalized physical coordinates, seeded by development."""
-    if not fixed_collection_authorized(manifest) or len(manifest['designs']) not in (400, 500):
-        raise ValueError('Supplement requires an authorized collection of 400 or 500 configurations')
+    if not fixed_collection_authorized(manifest) or len(manifest['designs']) != 400:
+        raise ValueError('Supplement requires the original authorized 400-point collection')
     low, high = np.array(list(BOUNDS.values())).T
     development = [r for r in manifest['designs'] if r['role'] == 'development']
-    if len(development) != len(manifest['designs']) - 80:
-        raise ValueError('Existing development configurations and the locked 80-test split are required')
+    if len(development) != 320:
+        raise ValueError('Original 320 development configurations are required')
     anchors = (np.array([[r['model'][k] for k in BOUNDS] for r in development]) - low) / (high - low)
     # Locked test INPUTS are consulted solely to prevent an exact duplicate.
     known = {tuple(r['model'][k] for k in BOUNDS) for r in manifest['designs']}
@@ -81,25 +81,22 @@ def prepare_supplement(manifest, *, pool_power=16, evaluation_power=16):
                 k: row[k] for k in ('physics_hash', 'physical_inputs_hash', 'numerical_inputs_hash')}:
             raise ValueError('Platform/model differs from frozen native identities; use the Linux worker runtime')
     template = deepcopy(next(r['model'] for r in manifest['designs'] if r['id'] == 'development-0001'))
-    batch_number = (len(manifest['designs']) - 400) // COUNT + 1
-    batch_id = BATCH_ID + ('-02' if batch_number == 2 else '')
-    start_index = max(int(r['id'].split('-')[-1]) for r in manifest['designs'] if r['role'] == 'development') + 1
     rows = []
     for i, vector in enumerate(points):
         model = ModelSpec.model_validate({**template, **dict(zip(BOUNDS, map(float, vector), strict=True))})
-        row = record(model, 'development', start_index + i, OWNERS[i % len(OWNERS)], list(BOUNDS))
-        row.update(supplemental_batch_id=batch_id, selection_reason=report['method'],
+        row = record(model, 'development', 321 + i, OWNERS[i % len(OWNERS)], list(BOUNDS))
+        row.update(supplemental_batch_id=BATCH_ID, selection_reason=report['method'],
                    max_checkpoint_segments=8, selection_order=i + 1)
         rows.append(row)
-    contract = {'human_authorized': True, 'batch_id': batch_id, 'count': COUNT,
+    contract = {'human_authorized': True, 'batch_id': BATCH_ID, 'count': COUNT,
                 'parent_initial_designs_hash': manifest['fixed_collection_contract']['initial_designs_hash'],
-                'parent_collection_designs_hash': digest({r['id']: r['physics_hash'] for r in manifest['designs']}),
                 'designs_hash': digest({r['id']: r['physics_hash'] for r in rows}),
                 'models_hash': digest({r['id']: r['model'] for r in rows}),
                 'selection_report_hash': digest(report),
                 'human_instruction': 'kiểm tra sau đó nghiên cứu chạy thêm 100 mẫu nữa',
                 'velocity_m_s': 6.5, 'duration_s': .008, 'test_split_unchanged': True}
-    updated = with_supplement(manifest, rows, contract)
+    updated = {**manifest, 'designs': manifest['designs'] + rows,
+               'supplemental_collection_contract': contract}
     if not fixed_collection_authorized(updated):
         raise ValueError('Supplement does not satisfy the extended immutable contract')
     return {'schema_version': 1, 'campaign_id': manifest['id'], 'rows': rows,
@@ -107,12 +104,3 @@ def prepare_supplement(manifest, *, pool_power=16, evaluation_power=16):
             'initial_model_hash': digest({r['id']: r['model'] for r in manifest['designs']}),
             'solver_source_sha': manifest['worker_metadata_upgrade']['source_sha'],
             'runtime_hash': manifest['runtime_hash'], 'platform': 'Linux'}
-
-
-def with_supplement(manifest, rows, contract):
-    updated = {**manifest, 'designs': manifest['designs'] + rows}
-    if manifest.get('supplemental_collection_contract'):
-        updated['additional_supplemental_contracts'] = [*manifest.get('additional_supplemental_contracts', []), contract]
-    else:
-        updated['supplemental_collection_contract'] = contract
-    return updated

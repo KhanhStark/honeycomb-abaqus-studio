@@ -6,7 +6,7 @@ import pytest
 from honeycomb_studio.campaign import BOUNDS, geometry_valid
 from honeycomb_studio.campaign_protocol import advance, fixed_collection_authorized, runnable
 from honeycomb_studio.campaign_queue import admission
-from honeycomb_studio.campaign_supplement import prepare_supplement, select_points, with_supplement
+from honeycomb_studio.campaign_supplement import prepare_supplement, select_points
 from test_campaign_fixed_velocity import fresh_collection
 
 
@@ -98,45 +98,3 @@ def test_status_keeps_original400_and_supplemental100_counts_separate(proposal):
     assert report['initial_400_dispatched'] == report['initial_400_completed'] == 400
     assert report['supplemental_configurations'] == report['supplemental_dispatched'] == report['supplemental_completed'] == 100
     assert report['collection_configurations'] == 500
-
-
-@pytest.fixture(scope='module')
-def second_proposal(proposal):
-    manifest = extended(proposal)
-    return manifest, prepare_supplement(manifest, pool_power=10, evaluation_power=10)
-
-
-def test_second100_extends_to600_without_mutating_first500(second_proposal):
-    manifest, plan = deepcopy(second_proposal)
-    before = deepcopy(manifest)
-    updated = with_supplement(manifest, plan['rows'], plan['contract'])
-    assert manifest == before
-    assert updated['designs'][:500] == before['designs']
-    assert updated['supplemental_collection_contract'] == before['supplemental_collection_contract']
-    assert plan['contract']['batch_id'] == 'supplemental-100-20261109-02'
-    assert {r['id'] for r in plan['rows']} == {f'development-{i:04d}' for i in range(421, 521)}
-    assert len({r['physics_hash'] for r in updated['designs']}) == 600
-    assert fixed_collection_authorized(updated) and len(runnable(updated)) == 600
-    assert all(admission(updated, r) for r in plan['rows'])
-    assert advance(updated)['phase'] == 'fixed_collection'
-
-
-@pytest.mark.parametrize('change', ['unapproved', 'parent', 'models', 'batch', 'first_contract', 'third_batch'])
-def test_second_extension_rejects_drift_and_further_unapproved_batches(second_proposal, change):
-    manifest, plan = deepcopy(second_proposal)
-    updated = with_supplement(manifest, plan['rows'], plan['contract'])
-    contract = updated['additional_supplemental_contracts'][0]
-    if change == 'unapproved':
-        contract['human_authorized'] = False
-    elif change == 'parent':
-        contract['parent_collection_designs_hash'] = 'f' * 64
-    elif change == 'models':
-        updated['designs'][-1]['model']['duration'] = .012
-    elif change == 'batch':
-        updated['designs'][-1]['supplemental_batch_id'] = 'unknown'
-    elif change == 'first_contract':
-        updated['supplemental_collection_contract']['designs_hash'] = 'f' * 64
-    else:
-        updated['additional_supplemental_contracts'].append(deepcopy(contract))
-    assert not fixed_collection_authorized(updated)
-    assert not admission(updated, updated['designs'][-1])

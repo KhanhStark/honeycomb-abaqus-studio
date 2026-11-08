@@ -31,26 +31,17 @@ def fixed_collection_authorized(manifest):
     rows = [r for r in all_rows if not r.get('supplemental_batch_id')]
     extras = [r for r in all_rows if r.get('supplemental_batch_id')]
     extension = manifest.get('supplemental_collection_contract')
-    later = manifest.get('additional_supplemental_contracts', [])
-    if not isinstance(later, list):
-        return False
-    extensions = ([extension] if extension else []) + later
-    extension_valid = isinstance(later, list) and len(extensions) <= 2 and (bool(extension) or not later)
-    preceding = list(rows)
-    for index, item in enumerate(extensions):
-        batch_id = 'supplemental-100-20261109' + ('-02' if index else '')
-        batch = [r for r in extras if r['supplemental_batch_id'] == batch_id]
-        extension_valid = extension_valid and (
-            item.get('human_authorized') is True and item.get('batch_id') == batch_id
-            and item.get('count') == len(batch) == 100
-            and item.get('parent_initial_designs_hash') == contract.get('initial_designs_hash')
-            and item.get('designs_hash') == digest({r['id']: r['physics_hash'] for r in batch})
-            and item.get('models_hash') == digest({r['id']: r['model'] for r in batch})
-            and (index == 0 or item.get('parent_collection_designs_hash') ==
-                 digest({r['id']: r['physics_hash'] for r in preceding}))
-            and all(r['role'] == 'development' for r in batch))
-        preceding.extend(batch)
-    extension_valid = extension_valid and len(extras) == 100 * len(extensions)
+    extension_valid = not extras and extension is None
+    if extension:
+        extension_valid = (
+            extension.get('human_authorized') is True
+            and extension.get('batch_id') == 'supplemental-100-20261109'
+            and extension.get('count') == len(extras) == 100
+            and extension.get('parent_initial_designs_hash') == contract.get('initial_designs_hash')
+            and extension.get('designs_hash') == digest({r['id']: r['physics_hash'] for r in extras})
+            and extension.get('models_hash') == digest({r['id']: r['model'] for r in extras})
+            and all(r['role'] == 'development' and r['supplemental_batch_id'] == extension['batch_id']
+                    for r in extras))
     return (manifest.get('id', '').endswith('-v6p5')
             and contract.get('human_authorized') is True
             and contract.get('velocity_m_s') == 6.5 and contract.get('duration_s') == .008
