@@ -32,6 +32,13 @@ def ticket_key(identity, ticket):
     return campaign_key(identity) + "/work/" + ticket
 
 
+def checkpoint_segment_limit(row):
+    limit = row.get('max_checkpoint_segments', 4)
+    if type(limit) is not int or not 4 <= limit <= 12:
+        raise ValueError('Invalid bounded checkpoint continuation budget')
+    return limit
+
+
 class CampaignStore:
     """Separate metadata and owner shards, each comfortably below Contents' 1-MiB limit."""
 
@@ -286,7 +293,7 @@ class Dispatcher:
                 return old
             segment = old.get("segment", 0)
             attempt = old.get("attempt", 0)
-            if segment >= 4 or attempt > 2:
+            if segment >= checkpoint_segment_limit(old) or attempt > 2:
                 raise ValueError("Execution budget exhausted")
             return {**old, "status": "dispatching", "ticket": ticket,
                     'error': None,
@@ -336,7 +343,7 @@ def apply_outcome(row, result):
                          segment=0, predecessor=None, error='Numerical quality gate: ' + str(result['quality'].get('errors')))
     elif outcome == "checkpoint":
         segment = result["segment"] + 1
-        value.update(status="checkpoint" if segment < 4 else "budget_exhausted", segment=segment,
+        value.update(status="checkpoint" if segment < checkpoint_segment_limit(row) else "budget_exhausted", segment=segment,
                      predecessor=result["receipt"], archive=result["archive"])
     elif outcome == "solver_failed":
         attempt = value.get("attempt", 0) + 1

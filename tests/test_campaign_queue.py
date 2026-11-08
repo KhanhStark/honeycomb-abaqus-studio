@@ -194,3 +194,12 @@ def test_capacity_ramp_accepts_a_license_ceiling_between_planned_stages():
                                  solver_started_at=1, solver_finished_at=100) for _ in range(128)]}
     assert ramp_capacity(manifest)['capacity_stage'] == 128
     assert ramp_capacity(manifest)['capacity_stage'] == 128
+
+def test_recorded_checkpoint_budget_can_continue_slow_unchanged_models():
+    row = {**campaign_manifest()['pilot_designs'][0], 'ticket': 'a' * 32, 'max_checkpoint_segments': 8}
+    result = dict(ticket=row['ticket'], design=row, outcome='checkpoint', segment=3, workflow_run_id=11,
+                  archive_verified=True, receipt={}, archive={})
+    assert apply_outcome(row, result)['status'] == 'checkpoint'
+    assert apply_outcome(row, {**result, 'segment': 7})['status'] == 'budget_exhausted'
+    with pytest.raises(ValueError, match='bounded checkpoint'):
+        apply_outcome({**row, 'max_checkpoint_segments': 100}, result)
