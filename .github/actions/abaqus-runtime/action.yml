@@ -10,6 +10,10 @@ inputs:
   drive_credentials:
     required: true
     description: Drive credentials for installation media
+  transport_script:
+    required: false
+    default: scripts/prepare_linux_media.py
+    description: Pinned installation transport tool; installer bytes remain SHA-256 locked
 runs:
   using: composite
   steps:
@@ -27,7 +31,8 @@ runs:
     - shell: bash
       env:
         HONEYCOMB_DRIVE_CREDENTIALS_JSON: ${{ inputs.drive_credentials }}
-      run: uv run --locked python scripts/actions_step.py --title "Tải bộ cài đã khóa SHA-256" --details output/actions-logs/download.log -- uv run --locked python scripts/prepare_linux_media.py
+        HONEYCOMB_MEDIA_TRANSPORT_SCRIPT: ${{ inputs.transport_script }}
+      run: uv run --locked python scripts/actions_step.py --title "Tải bộ cài đã khóa SHA-256" --details output/actions-logs/download.log -- uv run --locked python "$HONEYCOMB_MEDIA_TRANSPORT_SCRIPT"
     - shell: bash
       env:
         HONEYCOMB_INSTALL_CAA: '1'
