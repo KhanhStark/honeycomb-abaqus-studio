@@ -1,0 +1,54 @@
+name: Verify encrypted installer CDN on another owner
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: verify-encrypted-media-cdn
+  cancel-in-progress: false
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      ABAQUS_MEDIA_RELEASE_KEY: ${{ secrets.ABAQUS_MEDIA_RELEASE_KEY }}
+      ABAQUS_MEDIA_RELEASE_TAG: ${{ vars.ABAQUS_MEDIA_RELEASE_TAG }}
+      HONEYCOMB_ACTIONS_LOG: '1'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.0
+      - run: uv sync --locked --extra cloud
+      - name: Reserve enough hosted runner disk for the pinned ISO
+        run: |
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          for directory in /usr/local/lib/android /usr/share/dotnet; do
+            if test -d "$directory" && ! test -L "$directory"; then
+              sudo rm -rf --one-file-system -- "$directory"
+            fi
+          done
+      - name: Use the worker media entry point with a different repository token
+        run: |
+          uv run --locked --extra cloud python scripts/prepare_linux_media.py
+          uv run --locked --extra cloud python - <<'PY'
+          import json
+          from pathlib import Path
+          from honeycomb_studio.media_cache import ISO_SHA256
+          result = json.loads(Path('output/media-inspection/inspection.json').read_text())
+          assert result['source'] == 'encrypted_github_release'
+          assert result['iso']['sha256'] == ISO_SHA256
+          print(json.dumps(result), flush=True)
+          PY
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: verified-cross-owner-media-cdn
+          path: output/media-inspection/inspection.json
+          retention-days: 30
