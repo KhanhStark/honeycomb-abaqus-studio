@@ -104,6 +104,50 @@ def test6p5_collection_still_holds_unknown_failures():
     assert dispatch_candidates(result) == []
 
 
+@pytest.mark.parametrize('already_stalled', [False, True])
+def test_retained_numerical_failure_does_not_stop_other_authorized_fixed_samples(already_stalled):
+    from test_campaign_provisional_failure import complete
+
+    manifest = fresh_collection()
+    failed, pending = manifest['designs'][:2]
+    complete(failed)
+    failed['summary'].update(solver_completed=True, contact_force_check_max_relative_percent=2.895)
+    failed.update(status='quarantined', attempt=3,
+                  quality={'passed': False, 'errors': ['contact_force_check_max_relative_percent']},
+                  error="Numerical quality gate: ['contact_force_check_max_relative_percent']")
+    if already_stalled:
+        manifest.update(phase='needs_investigation', blocked_design_ids=[failed['id']],
+                        error='Required configurations exhausted their execution budget; inspect retained diagnostics')
+    before = deepcopy(failed)
+    result = advance(manifest)
+    assert result['phase'] == 'fixed_collection'
+    assert result['collection_failed_design_ids'] == [failed['id']]
+    assert result['designs'][0] == before
+    assert admission(result, result['designs'][1])
+    assert len(result['designs']) == 400 and 'collection_report' not in result
+    assert not globally_qualified(result)
+
+
+@pytest.mark.parametrize('problem', ['unknown_result', 'unverified_archive', 'changed_contract'])
+def test_fixed_collection_failure_isolation_keeps_unresolved_evidence_and_contract_gates(problem):
+    from test_campaign_provisional_failure import complete
+
+    manifest = fresh_collection()
+    failed = manifest['designs'][0]
+    complete(failed)
+    failed.update(status='quarantined', quality={'passed': False}, error='Numerical quality gate: contact')
+    failed['summary']['contact_force_check_max_relative_percent'] = 2.895
+    if problem == 'unknown_result':
+        failed['summary']['solver_completed'] = False
+    elif problem == 'unverified_archive':
+        failed['archive_verified'] = False
+    else:
+        manifest['fixed_collection_contract']['human_authorized'] = False
+    result = advance(manifest)
+    assert result['phase'] == 'needs_investigation'
+    assert dispatch_candidates(result) == []
+
+
 def test6p5_finishes_only_after400_verified_actual_results():
     from test_campaign_provisional_failure import complete
 

@@ -18,6 +18,17 @@ from .campaign import (
 from .models import ModelSpec, digest
 
 PILOT_RESPONSE_ERROR = '8 m/s pilot did not meet the agreed response window'
+EXECUTION_BUDGET_ERROR = 'Required configurations exhausted their execution budget; inspect retained diagnostics'
+
+
+def retained_numerical_failure(row):
+    """Keep an archived failed sample closed while independent raw collection continues."""
+    summary = row.get('summary', {})
+    return (row['status'] == 'quarantined' and row.get('archive_verified') is True
+            and bool(row.get('archive')) and row.get('quality', {}).get('passed') is False
+            and str(row.get('error', '')).startswith('Numerical quality gate:')
+            and summary.get('solver_completed') is True
+            and not numerical_gate(summary)['passed'])
 
 
 def initial_designs(manifest):
@@ -157,16 +168,28 @@ def advance(original):
     manifest = deepcopy(original)
     phase = manifest.get('phase', 'material')
     gates = manifest.setdefault('gates', {})
+    if (phase == 'needs_investigation' and manifest.get('error') == EXECUTION_BUDGET_ERROR
+            and fixed_collection_authorized(manifest)):
+        failures = [r for r in initial_designs(manifest)
+                    if r['status'] in ('quarantined', 'budget_exhausted', 'needs_investigation')]
+        if failures and all(retained_numerical_failure(r) for r in failures):
+            manifest.update(phase='fixed_collection', error=None, blocked_design_ids=[])
+            phase = manifest['phase']
     if (phase == 'needs_investigation' and manifest.get('error') == PILOT_RESPONSE_ERROR
             and response_failure_collection_authorized(manifest)):
         record_pilot_response_failure(manifest)
         manifest.update(phase='provisional_collection', error=None)
         phase = manifest['phase']
-    blocked = [r['id'] for r in runnable(manifest) if r['status'] in
-               ('quarantined', 'budget_exhausted', 'needs_investigation')]
+    failures = [r for r in runnable(manifest) if r['status'] in
+                ('quarantined', 'budget_exhausted', 'needs_investigation')]
+    isolated = ([r['id'] for r in failures if retained_numerical_failure(r)]
+                if phase == 'fixed_collection' and fixed_collection_authorized(manifest) else [])
+    if phase == 'fixed_collection':
+        manifest['collection_failed_design_ids'] = isolated
+    blocked = [r['id'] for r in failures if r['id'] not in isolated]
     if blocked:
         manifest.update(phase='needs_investigation', blocked_design_ids=blocked,
-                        error='Required configurations exhausted their execution budget; inspect retained diagnostics')
+                        error=EXECUTION_BUDGET_ERROR)
         return manifest
     if phase == 'material':
         if gates.get('material', {}).get('passed') is True and gates.get('restart', {}).get('passed') is True:
